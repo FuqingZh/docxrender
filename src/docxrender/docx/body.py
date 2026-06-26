@@ -13,8 +13,8 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
-from docxkit.contracts import DocxStyle
-from docxkit.markdown import (
+from docxrender.contracts import DocxStyle
+from docxrender.markdown import (
     MarkdownBlock,
     MarkdownHeading,
     MarkdownImage,

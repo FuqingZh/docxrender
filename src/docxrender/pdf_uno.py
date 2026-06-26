@@ -13,7 +13,7 @@ from io import BufferedWriter
 from pathlib import Path
 from typing import Any, Protocol
 
-from docxkit.contracts import (
+from docxrender.contracts import (
     DocxFieldRefreshOptions,
     DocxToPdfOptions,
     DocxToPdfResult,
@@ -146,7 +146,7 @@ def convert_docx_to_pdf_with_uno(state: DocxToPdfState) -> DocxToPdfState:
     if options.file_out_docx_refreshed is not None:
         options.file_out_docx_refreshed.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="docxkit-docx-stage-") as dir_stage_tmp:
+    with tempfile.TemporaryDirectory(prefix="docxrender-docx-stage-") as dir_stage_tmp:
         file_in_docx_staged = copy_docx_to_stage(
             options.file_in_docx,
             dir_stage=Path(dir_stage_tmp),
@@ -212,7 +212,9 @@ def refresh_docx_with_uno(
     options.dir_user_profile.mkdir(parents=True, exist_ok=True)
     file_out_docx.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="docxkit-docx-refresh-stage-") as dir_tmp:
+    with tempfile.TemporaryDirectory(
+        prefix="docxrender-docx-refresh-stage-"
+    ) as dir_tmp:
         file_in_docx_staged = copy_docx_to_stage(file_in_docx, dir_stage=Path(dir_tmp))
         uno_module = import_uno_module()
         port = select_free_port()
@@ -276,7 +278,8 @@ def import_uno_module() -> Any:
 def create_libreoffice_runtime_guidance_fields() -> list[str]:
     return [
         "runtime_dependency=LibreOffice and Python-UNO are external runtime "
-        "dependencies; docxkit does not install them through a Python package extra.",
+        "dependencies; docxrender does not install them through a Python "
+        "package extra.",
         "validate_libreoffice=libreoffice --headless --version",
         'validate_uno=python -c "import uno"',
         "install_debian_ubuntu=sudo apt install libreoffice python3-uno",

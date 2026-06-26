@@ -1,6 +1,6 @@
-# docxkit
+# docxrender
 
-`docxkit` is a small Python package for Word-first DOCX rendering.
+`docxrender` is a small Python package for Word-first DOCX rendering.
 
 Its core boundary is intentionally narrow:
 
@@ -42,7 +42,7 @@ Runtime dependencies are declared in `pyproject.toml`:
 - `python-docx`
 
 PDF conversion and DOCX field refresh are optional runtime features. They do
-not require extra Python packages from `docxkit`, but they do require an
+not require extra Python packages from `docxrender`, but they do require an
 external LibreOffice/UNO runtime.
 
 ```bash
@@ -56,7 +56,7 @@ On Debian or Ubuntu, that runtime is typically installed outside Python:
 sudo apt install libreoffice python3-uno
 ```
 
-`docxkit` intentionally does not provide a `docxkit[pdf]` extra. Installing a
+`docxrender` intentionally does not provide a `docxrender[pdf]` extra. Installing a
 Python package should not silently install system software or require
 administrator privileges. Base DOCX writing with `field_refresh=None` does not
 import UNO and works without LibreOffice.
@@ -64,12 +64,12 @@ import UNO and works without LibreOffice.
 ## Public API
 
 The stable public API is exported from the package root. Product repositories
-should prefer `from docxkit import ...`; implementation modules such as
-`docxkit.markdown` and `docxkit.docx` are technical
+should prefer `from docxrender import ...`; implementation modules such as
+`docxrender.markdown` and `docxrender.docx` are technical
 layers and are not compatibility-stable public contracts.
 
 ```python
-from docxkit import (
+from docxrender import (
     DocxWriter,
     DocxFieldRefreshOptions,
     DocxFontStyle,
@@ -103,7 +103,7 @@ Minimal fluent DOCX write example:
 ```python
 from pathlib import Path
 
-from docxkit import DocxWriter
+from docxrender import DocxWriter
 
 result = (
     DocxWriter()
@@ -153,7 +153,7 @@ Explicit dataclass DOCX write example:
 ```python
 from pathlib import Path
 
-from docxkit import (
+from docxrender import (
     DocxFontStyle,
     DocxParagraphStyle,
     DocxSizeStyle,
@@ -211,12 +211,12 @@ The template should contain a paragraph whose text is the body anchor token:
 {{ body_anchor }}
 ```
 
-`docxkit` sets `body_anchor` in the template context when the caller does not
+`docxrender` sets `body_anchor` in the template context when the caller does not
 provide it.
 
 ## Style Configuration
 
-`docxkit` does not read TOML, JSON, YAML, or any other config file in its public
+`docxrender` does not read TOML, JSON, YAML, or any other config file in its public
 API. Callers convert their own configuration into `DocxStyle`.
 
 The initial style model is based on:
@@ -230,7 +230,7 @@ the package.
 
 ## Non-Goals
 
-`docxkit` does not own:
+`docxrender` does not own:
 
 - report manifest schemas
 - workflow resource layout
@@ -251,4 +251,4 @@ pdm run python -m unittest discover -v
 
 The suite currently covers public API construction, minimal DOCX writing,
 markdown body insertion, basic style application, and the boundary that
-`docxkit` does not import product repositories.
+`docxrender` does not import product repositories.

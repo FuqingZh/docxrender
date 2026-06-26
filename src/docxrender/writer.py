@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Self
 
-from docxkit.contracts import (
+from docxrender.contracts import (
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxParagraphStyle,
@@ -406,7 +406,7 @@ class DocxWriter:
             DocxWriteResult: Result containing the written DOCX path.
         """
 
-        from docxkit.api import write_docx
+        from docxrender.api import write_docx
 
         return write_docx(
             self.build_options(

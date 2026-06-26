@@ -14,7 +14,7 @@ from docx import Document
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
-from docxkit import (
+from docxrender import (
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxParagraphStyle,
@@ -29,11 +29,11 @@ from docxkit import (
     convert_docx_to_pdf,
     write_docx,
 )
-from docxkit.docx.fields import (
+from docxrender.docx.fields import (
     write_docx_field_update_markers,
     write_frozen_docx_fields,
 )
-from docxkit.pdf_uno import (
+from docxrender.pdf_uno import (
     create_libreoffice_listener_command,
     create_load_failure_fields,
     import_uno_module,
@@ -116,10 +116,10 @@ def create_docx_style() -> DocxStyle:
 
 class PublicContractTest(unittest.TestCase):
     def test_public_imports_are_explicit(self) -> None:
-        import docxkit
+        import docxrender
 
         self.assertEqual(
-            docxkit.__all__,
+            docxrender.__all__,
             [
                 "DocxWriter",
                 "DocxFieldRefreshOptions",
@@ -138,7 +138,7 @@ class PublicContractTest(unittest.TestCase):
         )
 
     def test_docx_write_options_construct_from_structured_inputs(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             options = DocxWriteOptions(
                 file_template=path_tmp / "template.docx",
@@ -156,7 +156,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertEqual(options.style.paragraph.first_line_indent_cm, 0.74)
 
     def test_docx_to_pdf_options_construct_from_conversion_inputs(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             options = DocxToPdfOptions(
                 exe_libreoffice=Path("/usr/bin/libreoffice"),
@@ -169,7 +169,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertIsNone(options.file_listener_log)
 
     def test_public_results_are_structured_paths(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             result_docx = DocxWriteResult(file_docx=path_tmp / "report.docx")
             result_pdf = DocxToPdfResult(file_pdf=path_tmp / "report.pdf")
@@ -233,7 +233,7 @@ class PublicContractTest(unittest.TestCase):
         self.assertIs(writer.build_style(), writer.style)
 
     def test_docx_writer_build_options_uses_fluent_state(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             field_refresh = DocxFieldRefreshOptions(
                 exe_libreoffice=Path("/usr/bin/libreoffice"),
@@ -258,7 +258,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertEqual(options.anchor_token, "__REPORT_BODY_ANCHOR__")
 
     def test_docx_writer_field_refresh_can_be_built_from_keywords(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
 
             options = (
@@ -292,7 +292,7 @@ class PublicContractTest(unittest.TestCase):
             DocxWriter().with_field_refresh()
 
     def test_docx_writer_write_docx_uses_core_writer(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
             file_out_docx = path_tmp / "report.docx"
@@ -321,7 +321,7 @@ class PublicContractTest(unittest.TestCase):
             )
 
     def test_write_docx_creates_minimal_document(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
             file_image = path_tmp / "image.png"
@@ -393,7 +393,7 @@ class PublicContractTest(unittest.TestCase):
             )
 
     def test_write_docx_without_field_refresh_does_not_import_uno(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
             file_out_docx = path_tmp / "report.docx"
@@ -426,7 +426,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertTrue(file_out_docx.exists())
 
     def test_write_docx_field_refresh_overwrites_output_docx(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
             file_out_docx = path_tmp / "report.docx"
@@ -436,7 +436,7 @@ class PublicContractTest(unittest.TestCase):
                 file_out = cast(Path, kwargs["file_out_docx"])
                 file_out.write_bytes(b"refreshed")
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with mock.patch.object(
                 pdf_uno,
@@ -464,7 +464,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertEqual(file_out_docx.read_bytes(), b"refreshed")
 
     def test_write_docx_field_refresh_can_write_separate_output_docx(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
             file_out_docx = path_tmp / "report.docx"
@@ -477,7 +477,7 @@ class PublicContractTest(unittest.TestCase):
                 self.assertEqual(file_in, file_out_docx)
                 file_out.write_bytes(b"refreshed separate")
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with mock.patch.object(
                 pdf_uno,
@@ -507,7 +507,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertEqual(file_refreshed.read_bytes(), b"refreshed separate")
 
     def test_write_docx_field_refresh_can_require_toc_and_freeze(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
             file_out_docx = path_tmp / "report.docx"
@@ -516,7 +516,7 @@ class PublicContractTest(unittest.TestCase):
             def fake_refresh_docx_with_uno(**kwargs: object) -> None:
                 _write_minimal_field_docx(cast(Path, kwargs["file_out_docx"]))
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with mock.patch.object(
                 pdf_uno,
@@ -547,7 +547,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertNotIn("fldChar", text_document)
 
     def test_write_docx_field_refresh_reports_missing_required_toc(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
             file_out_docx = path_tmp / "report.docx"
@@ -558,7 +558,7 @@ class PublicContractTest(unittest.TestCase):
                     cast(Path, kwargs["file_out_docx"])
                 )
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with mock.patch.object(
                 pdf_uno,
@@ -585,7 +585,7 @@ class PublicContractTest(unittest.TestCase):
                     )
 
     def test_create_libreoffice_listener_command_uses_isolated_profile(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_pdf_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
             command = create_libreoffice_listener_command(
                 exe_libreoffice=Path("/usr/bin/libreoffice"),
                 dir_user_profile=Path(dir_tmp) / "profile",
@@ -601,7 +601,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertTrue(command[-1].startswith("-env:UserInstallation=file://"))
 
     def test_convert_docx_to_pdf_stages_input_before_load(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_in_docx = path_tmp / "report.docx"
             file_in_docx.write_bytes(b"docx payload")
@@ -634,7 +634,7 @@ class PublicContractTest(unittest.TestCase):
                 file_staged.write_bytes(b"refreshed staged payload")
                 return fake_doc
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with (
                 mock.patch.object(pdf_uno, "select_free_port", return_value=23001),
@@ -681,7 +681,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertTrue(fake_process.terminated)
 
     def test_convert_docx_to_pdf_preserves_load_failure(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_contract_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_in_docx = path_tmp / "report.docx"
             file_in_docx.write_bytes(b"docx payload")
@@ -696,7 +696,7 @@ class PublicContractTest(unittest.TestCase):
                 systemPathToFileUrl=create_fake_file_url
             )
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with (
                 mock.patch.object(pdf_uno, "select_free_port", return_value=23001),
@@ -726,7 +726,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertTrue(fake_process.terminated)
 
     def test_pdf_load_failure_fields_include_staged_and_lock_info(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_pdf_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_source = path_tmp / "source.docx"
             file_source.write_bytes(b"source")
@@ -771,14 +771,14 @@ class PublicContractTest(unittest.TestCase):
             )
 
     def test_pdf_uno_runtime_is_loaded_only_when_requested(self) -> None:
-        with mock.patch("docxkit.pdf_uno.importlib.import_module") as import_module:
+        with mock.patch("docxrender.pdf_uno.importlib.import_module") as import_module:
             import_module.side_effect = ImportError("missing uno")
             with self.assertRaisesRegex(RuntimeError, "libreoffice_uno_import_failed"):
                 import_uno_module()
             import_module.assert_called_once_with("uno")
 
     def test_pdf_uno_import_failure_includes_install_guidance(self) -> None:
-        with mock.patch("docxkit.pdf_uno.importlib.import_module") as import_module:
+        with mock.patch("docxrender.pdf_uno.importlib.import_module") as import_module:
             import_module.side_effect = ImportError("missing uno")
 
             with self.assertRaises(RuntimeError) as ctx:
@@ -798,7 +798,7 @@ class PublicContractTest(unittest.TestCase):
         self.assertIn("docs_libreoffice_parameters=", text_error)
 
     def test_convert_docx_to_pdf_reports_missing_libreoffice_executable(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_pdf_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_in_docx = path_tmp / "report.docx"
             file_in_docx.write_bytes(b"docx payload")
@@ -809,7 +809,7 @@ class PublicContractTest(unittest.TestCase):
                 dir_user_profile=path_tmp / "lo-profile",
             )
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with (
                 mock.patch.object(pdf_uno, "import_uno_module", return_value=object()),
@@ -826,10 +826,10 @@ class PublicContractTest(unittest.TestCase):
         )
 
     def test_libreoffice_listener_start_failure_includes_guidance(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_pdf_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
             path_tmp = Path(dir_tmp)
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with (
                 mock.patch.object(pdf_uno, "validate_libreoffice_executable"),
@@ -858,11 +858,11 @@ class PublicContractTest(unittest.TestCase):
         self.assertIn("docs_libreoffice_api=", text_error)
 
     def test_libreoffice_listener_timeout_includes_guidance(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_pdf_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
             file_listener_log = Path(dir_tmp) / "listener.log"
             file_listener_log.write_text("cannot start", encoding="utf-8")
 
-            from docxkit import pdf_uno
+            from docxrender import pdf_uno
 
             with (
                 mock.patch.object(pdf_uno, "LISTENER_START_TIMEOUT_SECONDS", 0.0),
@@ -882,7 +882,7 @@ class PublicContractTest(unittest.TestCase):
         )
 
     def test_docx_field_update_markers_are_written(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_fields_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_fields_") as dir_tmp:
             file_docx = Path(dir_tmp) / "fields.docx"
             _write_minimal_field_docx(file_docx)
 
@@ -894,7 +894,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertIn('w:dirty="true"', text_document)
 
     def test_docx_field_freeze_preserves_result_text(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="docxkit_fields_") as dir_tmp:
+        with tempfile.TemporaryDirectory(prefix="docxrender_fields_") as dir_tmp:
             file_docx = Path(dir_tmp) / "fields.docx"
             _write_minimal_field_docx(file_docx)
             write_docx_field_update_markers(file_docx)
@@ -909,7 +909,7 @@ class PublicContractTest(unittest.TestCase):
             self.assertNotIn("w:dirty", text_document)
             self.assertIn("Rendered TOC", text_document)
 
-    def test_docxkit_does_not_import_product_repositories(self) -> None:
+    def test_docxrender_does_not_import_product_repositories(self) -> None:
         product_module_prefixes = (
             "proteomics",
             "trait_association",

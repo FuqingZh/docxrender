@@ -1,5 +1,5 @@
-from docxkit.api import convert_docx_to_pdf, write_docx
-from docxkit.contracts import (
+from docxrender.api import convert_docx_to_pdf, write_docx
+from docxrender.contracts import (
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxParagraphStyle,
@@ -11,7 +11,7 @@ from docxkit.contracts import (
     DocxWriteOptions,
     DocxWriteResult,
 )
-from docxkit.writer import DocxWriter
+from docxrender.writer import DocxWriter
 
 __all__ = [
     "DocxWriter",

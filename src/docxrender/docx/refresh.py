@@ -8,8 +8,8 @@ import zipfile
 from html import unescape
 from pathlib import Path
 
-from docxkit.contracts import DocxFieldRefreshOptions
-from docxkit.docx.fields import DOCX_FIELD_PART_PATTERN, write_frozen_docx_fields
+from docxrender.contracts import DocxFieldRefreshOptions
+from docxrender.docx.fields import DOCX_FIELD_PART_PATTERN, write_frozen_docx_fields
 
 TOC_FIELD_PATTERN = re.compile(
     (
@@ -35,7 +35,7 @@ def refresh_docx_fields(
         return
 
     file_refreshed = options.file_out_docx_refreshed or file_docx
-    from docxkit.pdf_uno import refresh_docx_with_uno
+    from docxrender.pdf_uno import refresh_docx_with_uno
 
     refresh_docx_with_uno(
         file_in_docx=file_docx,

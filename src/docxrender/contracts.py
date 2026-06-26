@@ -136,7 +136,7 @@ class DocxParagraphStyle:
 class DocxStyle:
     """Complete style bundle for DOCX writing.
 
-    `docxkit` accepts this structured style object directly. Reading TOML,
+    `docxrender` accepts this structured style object directly. Reading TOML,
     JSON, YAML, or another configuration format is the caller's responsibility.
 
     Attributes:

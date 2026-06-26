@@ -1,7 +1,7 @@
 [project]
-name = "docxkit"
+name = "docxrender"
 version = "0.1.0"
-description = "Default template for PDM package"
+description = "Minimal DOCX rendering core for template, markdown, field refresh, and PDF conversion workflows"
 authors = [
     {name = "FuqingZhang", email = "fuqin.zhang@proton.me"},
 ]

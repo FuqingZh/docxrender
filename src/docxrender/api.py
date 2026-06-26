@@ -5,19 +5,19 @@ from typing import Any, cast
 from docx import Document
 from docxtpl import DocxTemplate
 
-from docxkit.contracts import (
+from docxrender.contracts import (
     DocxToPdfOptions,
     DocxToPdfResult,
     DocxWriteOptions,
     DocxWriteResult,
 )
-from docxkit.docx.body import insert_markdown_blocks
-from docxkit.docx.fields import (
+from docxrender.docx.body import insert_markdown_blocks
+from docxrender.docx.fields import (
     write_docx_field_update_markers,
     write_frozen_docx_fields,
 )
-from docxkit.docx.refresh import refresh_docx_fields
-from docxkit.markdown import parse_markdown_blocks
+from docxrender.docx.refresh import refresh_docx_fields
+from docxrender.markdown import parse_markdown_blocks
 
 
 def write_docx(options: DocxWriteOptions) -> DocxWriteResult:
@@ -68,7 +68,7 @@ def convert_docx_to_pdf(options: DocxToPdfOptions) -> DocxToPdfResult:
         RuntimeError: LibreOffice or UNO cannot load or convert the document.
     """
 
-    from docxkit.pdf_uno import run_docx_to_pdf_pipeline
+    from docxrender.pdf_uno import run_docx_to_pdf_pipeline
 
     return run_docx_to_pdf_pipeline(options)
 

@@ -85,16 +85,16 @@ jobs:
 
       - name: Verify built package can be installed
         run: |
-          python -m venv /tmp/docxkit-wheel-venv
-          /tmp/docxkit-wheel-venv/bin/python -m pip install -U pip
-          /tmp/docxkit-wheel-venv/bin/python -m pip install dist/*.whl
-          /tmp/docxkit-wheel-venv/bin/python - <<'PY'
-          from docxkit import DocxWriter, convert_docx_to_pdf, write_docx
+          python -m venv /tmp/docxrender-wheel-venv
+          /tmp/docxrender-wheel-venv/bin/python -m pip install -U pip
+          /tmp/docxrender-wheel-venv/bin/python -m pip install dist/*.whl
+          /tmp/docxrender-wheel-venv/bin/python - <<'PY'
+          from docxrender import DocxWriter, convert_docx_to_pdf, write_docx
 
           assert DocxWriter().style.sizes.pt_body == 12.0
           assert callable(write_docx)
           assert callable(convert_docx_to_pdf)
-          print("docxkit wheel import ok")
+          print("docxrender wheel import ok")
           PY
 
       - name: Upload dist artifact
@@ -112,7 +112,7 @@ jobs:
       contents: read
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/docxkit
+      url: https://test.pypi.org/p/docxrender
     steps:
       - name: Download dist
         uses: actions/download-artifact@v4
@@ -137,7 +137,7 @@ jobs:
       contents: read
     environment:
       name: pypi
-      url: https://pypi.org/p/docxkit
+      url: https://pypi.org/p/docxrender
     steps:
       - name: Download dist
         uses: actions/download-artifact@v4
