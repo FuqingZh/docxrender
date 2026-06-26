@@ -1,0 +1,1 @@
+"""Internal DOCX rendering helpers."""
