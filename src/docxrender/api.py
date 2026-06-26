@@ -45,7 +45,7 @@ def write_docx(options: DocxWriteOptions) -> DocxWriteResult:
     insert_markdown_blocks(
         document,
         markdown_blocks,
-        anchor_token=options.anchor_token,
+        body_anchor=options.body_anchor,
         dir_base=options.dir_base,
         style=options.style,
     )
@@ -124,7 +124,7 @@ def _write_template_docx(options: DocxWriteOptions) -> None:
     options.file_out_docx.parent.mkdir(parents=True, exist_ok=True)
     template = cast(Any, DocxTemplate(str(options.file_template)))
     context = dict(options.context)
-    context.setdefault("body_anchor", options.anchor_token)
+    context.setdefault("body_anchor", options.body_anchor.anchor_token)
     template.render(context)
     template.save(str(options.file_out_docx))
 

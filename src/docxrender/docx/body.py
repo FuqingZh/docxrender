@@ -13,7 +13,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
-from docxrender.contracts import DocxStyle
+from docxrender.contracts import DocxBodyAnchorOptions, DocxStyle
 from docxrender.markdown import (
     MarkdownBlock,
     MarkdownHeading,
@@ -30,11 +30,11 @@ def insert_markdown_blocks(
     document: DocxDocument,
     markdown_blocks: tuple[MarkdownBlock, ...],
     *,
-    anchor_token: str,
+    body_anchor: DocxBodyAnchorOptions,
     dir_base: Path,
     style: DocxStyle,
 ) -> None:
-    anchor = _find_anchor_paragraph(document, anchor_token)
+    anchor = find_body_anchor_paragraph(document, body_anchor)
     if anchor is None:
         for block in markdown_blocks:
             _append_block(
@@ -52,17 +52,82 @@ def insert_markdown_blocks(
                 dir_base=dir_base,
                 style=style,
             )
-        _remove_paragraph(anchor)
+        if (
+            body_anchor.should_preserve_section_properties
+            and has_section_properties(anchor)
+        ):
+            clear_paragraph_runs(anchor)
+        else:
+            remove_paragraph(anchor)
 
 
-def _find_anchor_paragraph(
+def find_body_anchor_paragraphs(
     document: DocxDocument,
-    anchor_token: str,
-) -> Paragraph | None:
+    options: DocxBodyAnchorOptions,
+) -> tuple[Paragraph, ...]:
+    """Find body anchor paragraphs in top-level document paragraphs.
+
+    Args:
+        document (DocxDocument): DOCX document to search.
+        options (DocxBodyAnchorOptions): Anchor search options.
+
+    Returns:
+        tuple[Paragraph, ...]: Matching paragraphs in document order.
+    """
+
+    matches: list[Paragraph] = []
     for paragraph in document.paragraphs:
-        if paragraph.text.strip() == anchor_token:
-            return paragraph
-    return None
+        if _is_body_anchor_paragraph(paragraph, options):
+            matches.append(paragraph)
+    return tuple(matches)
+
+
+def find_body_anchor_paragraph(
+    document: DocxDocument,
+    options: DocxBodyAnchorOptions,
+) -> Paragraph | None:
+    """Find the unique body anchor paragraph according to options.
+
+    Args:
+        document (DocxDocument): DOCX document to search.
+        options (DocxBodyAnchorOptions): Anchor search options.
+
+    Returns:
+        Paragraph | None: Unique anchor paragraph, or `None` when missing and
+            `rule_missing="append"`.
+
+    Raises:
+        ValueError: The anchor is missing with `rule_missing="raise"`, the anchor
+            is duplicated, or an unsupported rule is supplied.
+    """
+
+    matches = find_body_anchor_paragraphs(document, options)
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(
+            "Body anchor token matched multiple paragraphs: "
+            f"anchor_token={options.anchor_token!r} count={len(matches)}"
+        )
+    if options.rule_missing == "append":
+        return None
+    if options.rule_missing == "raise":
+        raise ValueError(
+            "Could not locate body anchor token in document: "
+            f"anchor_token={options.anchor_token!r} rule_match={options.rule_match!r}"
+        )
+    raise ValueError(f"Unsupported body anchor missing rule: {options.rule_missing!r}")
+
+
+def _is_body_anchor_paragraph(
+    paragraph: Paragraph,
+    options: DocxBodyAnchorOptions,
+) -> bool:
+    if options.rule_match == "equals":
+        return paragraph.text.strip() == options.anchor_token
+    if options.rule_match == "contains":
+        return options.anchor_token in paragraph.text
+    raise ValueError(f"Unsupported body anchor match rule: {options.rule_match!r}")
 
 
 def _append_block(
@@ -298,7 +363,42 @@ def _insert_table_before_anchor(anchor: Paragraph, table: Table) -> None:
     cast(Any, anchor)._p.addprevious(cast(Any, table)._tbl)
 
 
-def _remove_paragraph(paragraph: Paragraph) -> None:
+def has_section_properties(paragraph: Paragraph) -> bool:
+    """Return whether a paragraph carries DOCX section properties.
+
+    Args:
+        paragraph (Paragraph): Paragraph to inspect.
+
+    Returns:
+        bool: Whether the paragraph contains `w:sectPr`.
+    """
+
+    paragraph_element = cast(Any, paragraph)._p
+    return (
+        paragraph_element.pPr is not None
+        and paragraph_element.pPr.sectPr is not None
+    )
+
+
+def clear_paragraph_runs(paragraph: Paragraph) -> None:
+    """Remove all runs from a paragraph while keeping paragraph properties.
+
+    Args:
+        paragraph (Paragraph): Paragraph to clear.
+    """
+
+    for run in list(paragraph.runs):
+        element = cast(Any, run)._element
+        element.getparent().remove(element)
+
+
+def remove_paragraph(paragraph: Paragraph) -> None:
+    """Remove a paragraph element from its parent.
+
+    Args:
+        paragraph (Paragraph): Paragraph to remove.
+    """
+
     element = cast(Any, paragraph)._element
     element.getparent().remove(element)
 

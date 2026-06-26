@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,6 +375,24 @@ class DocxHeaderFooterImageOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class DocxBodyAnchorOptions:
+    """Options for locating and clearing the DOCX body insertion anchor.
+
+    Attributes:
+        anchor_token (str): Paragraph token that marks the body insertion point.
+        rule_match (Literal["equals", "contains"]): How paragraph text is matched.
+        rule_missing (Literal["append", "raise"]): Behavior when no anchor exists.
+        should_preserve_section_properties (bool): Whether anchor paragraphs with
+            section properties should be cleared instead of removed.
+    """
+
+    anchor_token: str = "__REPORT_BODY_ANCHOR__"
+    rule_match: Literal["equals", "contains"] = "equals"
+    rule_missing: Literal["append", "raise"] = "append"
+    should_preserve_section_properties: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class DocxWriteOptions:
     """Inputs for writing a DOCX file.
 
@@ -385,8 +403,7 @@ class DocxWriteOptions:
         markdown_body (str): Already-rendered markdown body to insert into the DOCX.
         dir_base (Path): Base directory used to resolve relative image paths.
         style (DocxStyle): Structured DOCX style settings.
-        anchor_token (str): Paragraph text marking where markdown body content is
-            inserted.
+        body_anchor (DocxBodyAnchorOptions): Body insertion anchor settings.
         should_update_fields (bool): Whether DOCX fields should be prepared for update.
         should_freeze_fields (bool): Whether DOCX fields should be frozen after writing.
         field_refresh (DocxFieldRefreshOptions | None): Optional UNO field refresh
@@ -401,7 +418,7 @@ class DocxWriteOptions:
     markdown_body: str
     dir_base: Path
     style: DocxStyle
-    anchor_token: str = "__REPORT_BODY_ANCHOR__"
+    body_anchor: DocxBodyAnchorOptions = DocxBodyAnchorOptions()
     should_update_fields: bool = True
     should_freeze_fields: bool = False
     field_refresh: DocxFieldRefreshOptions | None = None

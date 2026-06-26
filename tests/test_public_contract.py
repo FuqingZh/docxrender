@@ -15,6 +15,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 from docxrender import (
+    DocxBodyAnchorOptions,
     DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
@@ -122,6 +123,7 @@ class TestPublicContract:
 
         assert docxrender.__all__ == [
             "DocxRenderer",
+            "DocxBodyAnchorOptions",
             "DocxFieldMarkerOptions",
             "DocxFieldRefreshOptions",
             "DocxFontStyle",
@@ -150,12 +152,22 @@ class TestPublicContract:
                 style=create_docx_style(),
             )
 
-            assert options.anchor_token == "__REPORT_BODY_ANCHOR__"
+            assert options.body_anchor.anchor_token == "__REPORT_BODY_ANCHOR__"
+            assert options.body_anchor.rule_match == "equals"
+            assert options.body_anchor.rule_missing == "append"
             assert options.should_update_fields is True
             assert options.should_freeze_fields is False
             assert options.field_refresh is None
             assert options.header_footer_images is None
             assert options.style.paragraph.first_line_indent_cm == 0.74
+
+    def test_docx_body_anchor_options_default_to_equals_append(self) -> None:
+        options = DocxBodyAnchorOptions()
+
+        assert options.anchor_token == "__REPORT_BODY_ANCHOR__"
+        assert options.rule_match == "equals"
+        assert options.rule_missing == "append"
+        assert options.should_preserve_section_properties is True
 
     def test_docx_to_pdf_options_construct_from_conversion_inputs(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -293,7 +305,7 @@ class TestPublicContract:
             header_footer_options = options.header_footer_images
             assert header_footer_options is not None
             assert header_footer_options.idx_section_start == 1
-            assert options.anchor_token == "__REPORT_BODY_ANCHOR__"
+            assert options.body_anchor.anchor_token == "__REPORT_BODY_ANCHOR__"
             renderer = DocxRenderer().with_field_refresh(field_refresh)
             built = renderer.build_options(
                 file_template=path_tmp / "template.docx",
@@ -303,6 +315,33 @@ class TestPublicContract:
                 dir_base=path_tmp,
             )
             assert renderer.docx_options is built
+
+    def test_docx_renderer_body_anchor_can_be_built_from_keywords(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            options = (
+                DocxRenderer()
+                .with_body_anchor(
+                    anchor_token="BODY-HERE",
+                    rule_match="contains",
+                    rule_missing="raise",
+                    should_preserve_section_properties=False,
+                )
+                .build_options(
+                    file_template=path_tmp / "template.docx",
+                    file_out_docx=path_tmp / "report.docx",
+                    context={},
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+            )
+
+            assert options.body_anchor == DocxBodyAnchorOptions(
+                anchor_token="BODY-HERE",
+                rule_match="contains",
+                rule_missing="raise",
+                should_preserve_section_properties=False,
+            )
 
     def test_docx_renderer_header_footer_images_can_be_built_from_keywords(
         self,
@@ -570,6 +609,7 @@ class TestPublicContract:
             assert result.file_docx == file_out_docx
             assert "Contract Report" in texts
             assert "Heading" in texts
+            assert "__REPORT_BODY_ANCHOR__" not in texts
             assert "Body first line.\nBody second line." in texts
             assert "注：Note text." in texts
             assert "First item" in texts
@@ -602,6 +642,158 @@ class TestPublicContract:
                 == 10.5
             )
             assert 'w:val="single"' in cast(Any, document.tables[0].cell(0, 0))._tc.xml
+
+    def test_write_docx_body_anchor_contains_match(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            _write_template_with_anchor_text(
+                file_template,
+                "before {{ body_anchor }} after",
+            )
+
+            write_docx(
+                DocxWriteOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={"report_title": "Contains"},
+                    markdown_body="Inserted body.",
+                    dir_base=path_tmp,
+                    style=create_docx_style(),
+                    body_anchor=DocxBodyAnchorOptions(rule_match="contains"),
+                )
+            )
+
+            texts = [
+                paragraph.text for paragraph in Document(str(file_out_docx)).paragraphs
+            ]
+            assert "Inserted body." in texts
+            assert "before __REPORT_BODY_ANCHOR__ after" not in texts
+
+    def test_write_docx_does_not_overwrite_explicit_body_anchor_context(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+            write_docx(
+                DocxWriteOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={"report_title": "Explicit", "body_anchor": "CUSTOM"},
+                    markdown_body="Inserted body.",
+                    dir_base=path_tmp,
+                    style=create_docx_style(),
+                    body_anchor=DocxBodyAnchorOptions(
+                        anchor_token="CUSTOM",
+                        rule_missing="raise",
+                    ),
+                )
+            )
+
+            texts = [
+                paragraph.text for paragraph in Document(str(file_out_docx)).paragraphs
+            ]
+            assert "Inserted body." in texts
+            assert "CUSTOM" not in texts
+
+    def test_write_docx_body_anchor_missing_append(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            _write_template_with_anchor_text(file_template, "No anchor here")
+
+            write_docx(
+                DocxWriteOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={"report_title": "Append"},
+                    markdown_body="Appended body.",
+                    dir_base=path_tmp,
+                    style=create_docx_style(),
+                )
+            )
+
+            texts = [
+                paragraph.text for paragraph in Document(str(file_out_docx)).paragraphs
+            ]
+            assert texts[-1] == "Appended body."
+
+    def test_write_docx_body_anchor_missing_raise(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            _write_template_with_anchor_text(file_template, "No anchor here")
+
+            with pytest.raises(ValueError, match="Could not locate body anchor"):
+                write_docx(
+                    DocxWriteOptions(
+                        file_template=file_template,
+                        file_out_docx=file_out_docx,
+                        context={"report_title": "Raise"},
+                        markdown_body="Body.",
+                        dir_base=path_tmp,
+                        style=create_docx_style(),
+                        body_anchor=DocxBodyAnchorOptions(rule_missing="raise"),
+                    )
+                )
+
+    def test_write_docx_body_anchor_multiple_matches_raise(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            document = Document()
+            document.add_paragraph("{{ report_title }}")
+            document.add_paragraph("{{ body_anchor }}")
+            document.add_paragraph("{{ body_anchor }}")
+            document.save(str(file_template))
+
+            with pytest.raises(ValueError, match="multiple paragraphs"):
+                write_docx(
+                    DocxWriteOptions(
+                        file_template=file_template,
+                        file_out_docx=file_out_docx,
+                        context={"report_title": "Multiple"},
+                        markdown_body="Body.",
+                        dir_base=path_tmp,
+                        style=create_docx_style(),
+                    )
+                )
+
+    def test_write_docx_body_anchor_preserves_section_properties(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            document = Document()
+            document.add_paragraph("{{ report_title }}")
+            document.add_paragraph("{{ body_anchor }}")
+            document.add_section()
+            document.save(str(file_template))
+
+            write_docx(
+                DocxWriteOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={"report_title": "Section"},
+                    markdown_body="Inserted body.",
+                    dir_base=path_tmp,
+                    style=create_docx_style(),
+                    body_anchor=DocxBodyAnchorOptions(rule_missing="raise"),
+                )
+            )
+
+            texts = [
+                paragraph.text for paragraph in Document(str(file_out_docx)).paragraphs
+            ]
+            assert "Inserted body." in texts
+            assert "__REPORT_BODY_ANCHOR__" not in texts
+            assert "<w:sectPr" in _read_docx_part(file_out_docx, "word/document.xml")
 
     def test_write_docx_without_field_refresh_does_not_import_uno(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -1130,9 +1322,13 @@ class TestPublicContract:
 
 
 def _write_template(file_template: Path) -> None:
+    _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+
+def _write_template_with_anchor_text(file_template: Path, anchor_text: str) -> None:
     document = Document()
     document.add_paragraph("{{ report_title }}")
-    document.add_paragraph("{{ body_anchor }}")
+    document.add_paragraph(anchor_text)
     document.save(str(file_template))
 
 

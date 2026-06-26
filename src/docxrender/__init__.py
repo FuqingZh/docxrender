@@ -1,5 +1,6 @@
 from docxrender.api import convert_docx_to_pdf, write_docx
 from docxrender.contracts import (
+    DocxBodyAnchorOptions,
     DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
@@ -17,6 +18,7 @@ from docxrender.renderer import DocxRenderer
 
 __all__ = [
     "DocxRenderer",
+    "DocxBodyAnchorOptions",
     "DocxFieldMarkerOptions",
     "DocxFieldRefreshOptions",
     "DocxFontStyle",

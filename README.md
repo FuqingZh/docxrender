@@ -73,6 +73,7 @@ compatibility-stable public contracts.
 ```python
 from docxrender import (
     DocxRenderer,
+    DocxBodyAnchorOptions,
     DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
@@ -152,6 +153,7 @@ result = (
         file_footer_image=Path("footer.png"),
         idx_section_start=1,
     )
+    .with_body_anchor(rule_match="equals", rule_missing="raise")
     .write_docx(
         file_template=Path("template.docx"),
         file_out_docx=Path("report.docx"),
@@ -166,6 +168,12 @@ print(result.file_docx)
 `markdown_body` is the already-rendered Markdown body to insert into the DOCX
 template. `dir_base` is the base directory used to resolve relative image paths
 inside that Markdown body.
+
+`DocxBodyAnchorOptions` controls where the Markdown body is inserted. The search
+is limited to top-level body paragraphs in the DOCX main document. `equals`
+matches `paragraph.text.strip() == anchor_token`; `contains` matches templates
+where the token is embedded in a larger paragraph. Missing anchors can either
+append content or raise a template error.
 
 `DocxRenderer` can also start from an existing DOCX and run only later
 technical steps:

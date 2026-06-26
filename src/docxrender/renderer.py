@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from docxrender.api import (
     convert_docx_to_pdf,
@@ -11,6 +11,7 @@ from docxrender.api import (
     write_existing_docx,
 )
 from docxrender.contracts import (
+    DocxBodyAnchorOptions,
     DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
@@ -109,6 +110,7 @@ class DocxRenderer:
 
         if renderer is None:
             self._style = style or create_default_docx_style()
+            self._body_anchor = DocxBodyAnchorOptions()
             self._field_markers = DocxFieldMarkerOptions()
             self._field_refresh: DocxFieldRefreshOptions | None = None
             self._header_footer_images: DocxHeaderFooterImageOptions | None = None
@@ -118,6 +120,7 @@ class DocxRenderer:
             return
 
         self._style = style or renderer.style
+        self._body_anchor = renderer._body_anchor
         self._field_markers = renderer._field_markers
         self._field_refresh = renderer._field_refresh
         self._header_footer_images = renderer._header_footer_images
@@ -154,6 +157,16 @@ class DocxRenderer:
         """
 
         return self._docx_options
+
+    @property
+    def body_anchor(self) -> DocxBodyAnchorOptions:
+        """Current body anchor settings.
+
+        Returns:
+            DocxBodyAnchorOptions: Body insertion anchor settings.
+        """
+
+        return self._body_anchor
 
     @property
     def field_markers(self) -> DocxFieldMarkerOptions:
@@ -333,6 +346,37 @@ class DocxRenderer:
                 first_line_indent_cm=first_line_indent_cm,
                 note_prefixes=note_prefixes,
             ),
+        )
+        return self
+
+    def with_body_anchor(
+        self,
+        options: DocxBodyAnchorOptions | None = None,
+        *,
+        anchor_token: str = "__REPORT_BODY_ANCHOR__",
+        rule_match: Literal["equals", "contains"] = "equals",
+        rule_missing: Literal["append", "raise"] = "append",
+        should_preserve_section_properties: bool = True,
+    ) -> Self:
+        """Configure DOCX body insertion anchor behavior.
+
+        Args:
+            options (DocxBodyAnchorOptions | None): Complete anchor options.
+            anchor_token (str): Paragraph token marking the insertion point.
+            rule_match (Literal["equals", "contains"]): Anchor match rule.
+            rule_missing (Literal["append", "raise"]): Missing-anchor rule.
+            should_preserve_section_properties (bool): Whether anchor paragraphs with
+                section properties should be cleared instead of removed.
+
+        Returns:
+            Self: This renderer, for method chaining.
+        """
+
+        self._body_anchor = options or DocxBodyAnchorOptions(
+            anchor_token=anchor_token,
+            rule_match=rule_match,
+            rule_missing=rule_missing,
+            should_preserve_section_properties=should_preserve_section_properties,
         )
         return self
 
@@ -541,7 +585,6 @@ class DocxRenderer:
         context: Mapping[str, Any],
         markdown_body: str,
         dir_base: Path,
-        anchor_token: str = "__REPORT_BODY_ANCHOR__",
         should_update_fields: bool | None = None,
         should_freeze_fields: bool | None = None,
         field_refresh: DocxFieldRefreshOptions | None = None,
@@ -555,7 +598,6 @@ class DocxRenderer:
             context (Mapping[str, Any]): Template context passed to `docxtpl`.
             markdown_body (str): Markdown body to insert into the DOCX.
             dir_base (Path): Base directory used to resolve relative image paths.
-            anchor_token (str): Paragraph text marking markdown insertion point.
             should_update_fields (bool | None): Optional field-marker override.
             should_freeze_fields (bool | None): Optional field-freeze override.
             field_refresh (DocxFieldRefreshOptions | None): Optional per-call field
@@ -574,7 +616,7 @@ class DocxRenderer:
             markdown_body=markdown_body,
             dir_base=dir_base,
             style=self.style,
-            anchor_token=anchor_token,
+            body_anchor=self._body_anchor,
             should_update_fields=(
                 should_update_fields
                 if should_update_fields is not None
@@ -599,7 +641,6 @@ class DocxRenderer:
         context: Mapping[str, Any] | None = None,
         markdown_body: str | None = None,
         dir_base: Path | None = None,
-        anchor_token: str = "__REPORT_BODY_ANCHOR__",
         should_update_fields: bool | None = None,
         should_freeze_fields: bool | None = None,
         field_refresh: DocxFieldRefreshOptions | None = None,
@@ -613,7 +654,6 @@ class DocxRenderer:
             context (Mapping[str, Any] | None): Template context.
             markdown_body (str | None): Markdown body to insert.
             dir_base (Path | None): Base directory for relative image paths.
-            anchor_token (str): Paragraph text marking markdown insertion point.
             should_update_fields (bool | None): Optional field-marker override.
             should_freeze_fields (bool | None): Optional field-freeze override.
             field_refresh (DocxFieldRefreshOptions | None): Per-call refresh override.
@@ -656,7 +696,6 @@ class DocxRenderer:
                     context=context,
                     markdown_body=markdown_body,
                     dir_base=dir_base,
-                    anchor_token=anchor_token,
                     should_update_fields=should_update_fields,
                     should_freeze_fields=should_freeze_fields,
                     field_refresh=field_refresh,
