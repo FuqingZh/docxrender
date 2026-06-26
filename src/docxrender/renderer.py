@@ -11,6 +11,7 @@ from docxrender.api import (
     write_existing_docx,
 )
 from docxrender.contracts import (
+    DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxHeaderFooterImageOptions,
@@ -33,8 +34,8 @@ class _PdfConversionSettings:
     file_in_docx: Path | None = None
     file_out_docx_refreshed: Path | None = None
     file_listener_log: Path | None = None
-    should_update_fields: bool = True
-    should_freeze_fields: bool = False
+    should_update_fields: bool | None = None
+    should_freeze_fields: bool | None = None
 
 
 def create_default_docx_style() -> DocxStyle:
@@ -108,6 +109,7 @@ class DocxRenderer:
 
         if renderer is None:
             self._style = style or create_default_docx_style()
+            self._field_markers = DocxFieldMarkerOptions()
             self._field_refresh: DocxFieldRefreshOptions | None = None
             self._header_footer_images: DocxHeaderFooterImageOptions | None = None
             self._pdf_settings: _PdfConversionSettings | None = None
@@ -116,6 +118,7 @@ class DocxRenderer:
             return
 
         self._style = style or renderer.style
+        self._field_markers = renderer._field_markers
         self._field_refresh = renderer._field_refresh
         self._header_footer_images = renderer._header_footer_images
         self._pdf_settings = renderer._pdf_settings
@@ -151,6 +154,16 @@ class DocxRenderer:
         """
 
         return self._docx_options
+
+    @property
+    def field_markers(self) -> DocxFieldMarkerOptions:
+        """Current DOCX field marker and freeze settings.
+
+        Returns:
+            DocxFieldMarkerOptions: Field marker settings used by DOCX writes.
+        """
+
+        return self._field_markers
 
     @property
     def pdf_options(self) -> DocxToPdfOptions | None:
@@ -212,20 +225,12 @@ class DocxRenderer:
             Self: This renderer, for method chaining.
         """
 
-        fonts = self._style.fonts
-        self._style = DocxStyle(
-            fonts=DocxFontStyle(
-                font_name_latin=font_name_latin or fonts.font_name_latin,
-                font_name_body_east_asia=(
-                    font_name_body_east_asia or fonts.font_name_body_east_asia
-                ),
-                font_name_heading_east_asia=(
-                    font_name_heading_east_asia or fonts.font_name_heading_east_asia
-                ),
-            ),
-            sizes=self._style.sizes,
-            table=self._style.table,
-            paragraph=self._style.paragraph,
+        self._style = self._style.with_overrides(
+            fonts=self._style.fonts.with_overrides(
+                font_name_latin=font_name_latin,
+                font_name_body_east_asia=font_name_body_east_asia,
+                font_name_heading_east_asia=font_name_heading_east_asia,
+            )
         )
         return self
 
@@ -255,8 +260,7 @@ class DocxRenderer:
             Self: This renderer, for method chaining.
         """
 
-        self._style = DocxStyle(
-            fonts=self._style.fonts,
+        self._style = self._style.with_overrides(
             sizes=self._style.sizes.with_overrides(
                 pt_title_page_title=pt_title_page_title,
                 pt_title_page_meta=pt_title_page_meta,
@@ -266,8 +270,6 @@ class DocxRenderer:
                 pt_table=pt_table,
                 pt_heading_by_level=pt_heading_by_level,
             ),
-            table=self._style.table,
-            paragraph=self._style.paragraph,
         )
         return self
 
@@ -293,20 +295,14 @@ class DocxRenderer:
             Self: This renderer, for method chaining.
         """
 
-        table = self._style.table
-        self._style = DocxStyle(
-            fonts=self._style.fonts,
-            sizes=self._style.sizes,
-            table=DocxTableStyle(
-                border_color=border_color or table.border_color,
-                stripe_fill_color=stripe_fill_color or table.stripe_fill_color,
-                border_size_main=border_size_main or table.border_size_main,
-                border_size_header=border_size_header or table.border_size_header,
-                line_spacing=(
-                    line_spacing if line_spacing is not None else table.line_spacing
-                ),
+        self._style = self._style.with_overrides(
+            table=self._style.table.with_overrides(
+                border_color=border_color,
+                stripe_fill_color=stripe_fill_color,
+                border_size_main=border_size_main,
+                border_size_header=border_size_header,
+                line_spacing=line_spacing,
             ),
-            paragraph=self._style.paragraph,
         )
         return self
 
@@ -330,29 +326,41 @@ class DocxRenderer:
             Self: This renderer, for method chaining.
         """
 
-        paragraph = self._style.paragraph
-        self._style = DocxStyle(
-            fonts=self._style.fonts,
-            sizes=self._style.sizes,
-            table=self._style.table,
-            paragraph=DocxParagraphStyle(
-                line_spacing_body=(
-                    line_spacing_body
-                    if line_spacing_body is not None
-                    else paragraph.line_spacing_body
-                ),
-                line_spacing_note=(
-                    line_spacing_note
-                    if line_spacing_note is not None
-                    else paragraph.line_spacing_note
-                ),
-                first_line_indent_cm=(
-                    first_line_indent_cm
-                    if first_line_indent_cm is not None
-                    else paragraph.first_line_indent_cm
-                ),
-                note_prefixes=note_prefixes or paragraph.note_prefixes,
+        self._style = self._style.with_overrides(
+            paragraph=self._style.paragraph.with_overrides(
+                line_spacing_body=line_spacing_body,
+                line_spacing_note=line_spacing_note,
+                first_line_indent_cm=first_line_indent_cm,
+                note_prefixes=note_prefixes,
             ),
+        )
+        return self
+
+    def with_field_update_markers(
+        self,
+        options: DocxFieldMarkerOptions | None = None,
+        *,
+        should_update_fields: bool = True,
+        should_freeze_fields: bool = False,
+    ) -> Self:
+        """Configure DOCX field update marker and freeze behavior.
+
+        This configuration edits DOCX XML directly and does not require
+        LibreOffice or UNO. Use `with_field_refresh` for LibreOffice-backed TOC
+        and page-number refresh.
+
+        Args:
+            options (DocxFieldMarkerOptions | None): Complete field marker options.
+            should_update_fields (bool): Whether fields should be marked for update.
+            should_freeze_fields (bool): Whether field markup should be frozen.
+
+        Returns:
+            Self: This renderer, for method chaining.
+        """
+
+        self._field_markers = options or DocxFieldMarkerOptions(
+            should_update_fields=should_update_fields,
+            should_freeze_fields=should_freeze_fields,
         )
         return self
 
@@ -461,8 +469,8 @@ class DocxRenderer:
         file_in_docx: Path | None = None,
         file_out_docx_refreshed: Path | None = None,
         file_listener_log: Path | None = None,
-        should_update_fields: bool = True,
-        should_freeze_fields: bool = False,
+        should_update_fields: bool | None = None,
+        should_freeze_fields: bool | None = None,
     ) -> Self:
         """Configure optional DOCX-to-PDF conversion.
 
@@ -474,8 +482,8 @@ class DocxRenderer:
             file_in_docx (Path | None): Optional input DOCX override.
             file_out_docx_refreshed (Path | None): Optional refreshed DOCX output.
             file_listener_log (Path | None): Optional listener log path.
-            should_update_fields (bool): Whether staged fields should be marked.
-            should_freeze_fields (bool): Whether refreshed field results are frozen.
+            should_update_fields (bool | None): Optional field-marker override.
+            should_freeze_fields (bool | None): Optional field-freeze override.
 
         Returns:
             Self: This renderer, for method chaining.
@@ -534,8 +542,8 @@ class DocxRenderer:
         markdown_body: str,
         dir_base: Path,
         anchor_token: str = "__REPORT_BODY_ANCHOR__",
-        should_update_fields: bool = True,
-        should_freeze_fields: bool = False,
+        should_update_fields: bool | None = None,
+        should_freeze_fields: bool | None = None,
         field_refresh: DocxFieldRefreshOptions | None = None,
         header_footer_images: DocxHeaderFooterImageOptions | None = None,
     ) -> DocxWriteOptions:
@@ -548,8 +556,8 @@ class DocxRenderer:
             markdown_body (str): Markdown body to insert into the DOCX.
             dir_base (Path): Base directory used to resolve relative image paths.
             anchor_token (str): Paragraph text marking markdown insertion point.
-            should_update_fields (bool): Whether fields should be marked for update.
-            should_freeze_fields (bool): Whether fields should be frozen after writing.
+            should_update_fields (bool | None): Optional field-marker override.
+            should_freeze_fields (bool | None): Optional field-freeze override.
             field_refresh (DocxFieldRefreshOptions | None): Optional per-call field
                 refresh override.
             header_footer_images (DocxHeaderFooterImageOptions | None): Optional
@@ -567,8 +575,16 @@ class DocxRenderer:
             dir_base=dir_base,
             style=self.style,
             anchor_token=anchor_token,
-            should_update_fields=should_update_fields,
-            should_freeze_fields=should_freeze_fields,
+            should_update_fields=(
+                should_update_fields
+                if should_update_fields is not None
+                else self._field_markers.should_update_fields
+            ),
+            should_freeze_fields=(
+                should_freeze_fields
+                if should_freeze_fields is not None
+                else self._field_markers.should_freeze_fields
+            ),
             field_refresh=field_refresh or self._field_refresh,
             header_footer_images=header_footer_images or self._header_footer_images,
         )
@@ -584,8 +600,8 @@ class DocxRenderer:
         markdown_body: str | None = None,
         dir_base: Path | None = None,
         anchor_token: str = "__REPORT_BODY_ANCHOR__",
-        should_update_fields: bool = True,
-        should_freeze_fields: bool = False,
+        should_update_fields: bool | None = None,
+        should_freeze_fields: bool | None = None,
         field_refresh: DocxFieldRefreshOptions | None = None,
         header_footer_images: DocxHeaderFooterImageOptions | None = None,
     ) -> DocxWriteResult:
@@ -598,8 +614,8 @@ class DocxRenderer:
             markdown_body (str | None): Markdown body to insert.
             dir_base (Path | None): Base directory for relative image paths.
             anchor_token (str): Paragraph text marking markdown insertion point.
-            should_update_fields (bool): Whether fields should be marked for update.
-            should_freeze_fields (bool): Whether fields should be frozen after writing.
+            should_update_fields (bool | None): Optional field-marker override.
+            should_freeze_fields (bool | None): Optional field-freeze override.
             field_refresh (DocxFieldRefreshOptions | None): Per-call refresh override.
             header_footer_images (DocxHeaderFooterImageOptions | None): Per-call
                 header/footer image override.
@@ -657,8 +673,16 @@ class DocxRenderer:
         result = write_existing_docx(
             file_in_docx=self._file_docx,
             file_out_docx=file_out_docx,
-            should_update_fields=should_update_fields,
-            should_freeze_fields=should_freeze_fields,
+            should_update_fields=(
+                should_update_fields
+                if should_update_fields is not None
+                else self._field_markers.should_update_fields
+            ),
+            should_freeze_fields=(
+                should_freeze_fields
+                if should_freeze_fields is not None
+                else self._field_markers.should_freeze_fields
+            ),
             field_refresh=field_refresh or self._field_refresh,
             header_footer_images=header_footer_images or self._header_footer_images,
         )
@@ -708,6 +732,8 @@ class DocxRenderer:
                 context=context,
                 markdown_body=markdown_body,
                 dir_base=dir_base,
+                should_update_fields=should_update_fields,
+                should_freeze_fields=should_freeze_fields,
             )
         if self._file_docx is None:
             raise ValueError("file_docx is required before writing PDF.")
@@ -776,14 +802,14 @@ class DocxRenderer:
                 should_update_fields
                 if should_update_fields is not None
                 else settings.should_update_fields
-                if settings is not None
-                else True
+                if settings is not None and settings.should_update_fields is not None
+                else self._field_markers.should_update_fields
             ),
             should_freeze_fields=(
                 should_freeze_fields
                 if should_freeze_fields is not None
                 else settings.should_freeze_fields
-                if settings is not None
-                else False
+                if settings is not None and settings.should_freeze_fields is not None
+                else self._field_markers.should_freeze_fields
             ),
         )

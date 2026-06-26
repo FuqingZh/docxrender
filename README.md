@@ -73,6 +73,7 @@ compatibility-stable public contracts.
 ```python
 from docxrender import (
     DocxRenderer,
+    DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxHeaderFooterImageOptions,
@@ -83,6 +84,16 @@ from docxrender import (
     DocxWriteOptions,
     write_docx,
 )
+```
+
+`DocxFieldMarkerOptions` controls DOCX field update markers and field freezing
+without LibreOffice or UNO:
+
+```python
+DocxRenderer(file_docx=Path("report.docx")).with_field_update_markers(
+    should_update_fields=True,
+    should_freeze_fields=False,
+).write_docx()
 ```
 
 `DocxFieldRefreshOptions` is optional. Use it only when the caller has provided

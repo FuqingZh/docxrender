@@ -20,6 +20,42 @@ class DocxFontStyle:
     font_name_body_east_asia: str
     font_name_heading_east_asia: str
 
+    def with_overrides(
+        self,
+        *,
+        font_name_latin: str | None = None,
+        font_name_body_east_asia: str | None = None,
+        font_name_heading_east_asia: str | None = None,
+    ) -> DocxFontStyle:
+        """Create a copy with selected font values overridden.
+
+        Args:
+            font_name_latin (str | None): Latin font name applied to runs.
+            font_name_body_east_asia (str | None): East Asian body font name.
+            font_name_heading_east_asia (str | None): East Asian heading font name.
+
+        Returns:
+            DocxFontStyle: New font style with overrides applied.
+        """
+
+        return DocxFontStyle(
+            font_name_latin=(
+                font_name_latin
+                if font_name_latin is not None
+                else self.font_name_latin
+            ),
+            font_name_body_east_asia=(
+                font_name_body_east_asia
+                if font_name_body_east_asia is not None
+                else self.font_name_body_east_asia
+            ),
+            font_name_heading_east_asia=(
+                font_name_heading_east_asia
+                if font_name_heading_east_asia is not None
+                else self.font_name_heading_east_asia
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class DocxSizeStyle:
@@ -114,6 +150,52 @@ class DocxTableStyle:
     border_size_header: str
     line_spacing: float
 
+    def with_overrides(
+        self,
+        *,
+        border_color: str | None = None,
+        stripe_fill_color: str | None = None,
+        border_size_main: str | None = None,
+        border_size_header: str | None = None,
+        line_spacing: float | None = None,
+    ) -> DocxTableStyle:
+        """Create a copy with selected table style values overridden.
+
+        Args:
+            border_color (str | None): WordprocessingML border color.
+            stripe_fill_color (str | None): Body-row stripe fill color.
+            border_size_main (str | None): Main border size in Word units.
+            border_size_header (str | None): Header border size in Word units.
+            line_spacing (float | None): Table paragraph line spacing.
+
+        Returns:
+            DocxTableStyle: New table style with overrides applied.
+        """
+
+        return DocxTableStyle(
+            border_color=(
+                border_color if border_color is not None else self.border_color
+            ),
+            stripe_fill_color=(
+                stripe_fill_color
+                if stripe_fill_color is not None
+                else self.stripe_fill_color
+            ),
+            border_size_main=(
+                border_size_main
+                if border_size_main is not None
+                else self.border_size_main
+            ),
+            border_size_header=(
+                border_size_header
+                if border_size_header is not None
+                else self.border_size_header
+            ),
+            line_spacing=(
+                line_spacing if line_spacing is not None else self.line_spacing
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class DocxParagraphStyle:
@@ -130,6 +212,47 @@ class DocxParagraphStyle:
     line_spacing_note: float
     first_line_indent_cm: float
     note_prefixes: tuple[str, ...] = ("注：", "注:")
+
+    def with_overrides(
+        self,
+        *,
+        line_spacing_body: float | None = None,
+        line_spacing_note: float | None = None,
+        first_line_indent_cm: float | None = None,
+        note_prefixes: tuple[str, ...] | None = None,
+    ) -> DocxParagraphStyle:
+        """Create a copy with selected paragraph style values overridden.
+
+        Args:
+            line_spacing_body (float | None): Body paragraph line spacing.
+            line_spacing_note (float | None): Note paragraph line spacing.
+            first_line_indent_cm (float | None): First-line indent in centimeters.
+            note_prefixes (tuple[str, ...] | None): Prefixes classified as notes.
+
+        Returns:
+            DocxParagraphStyle: New paragraph style with overrides applied.
+        """
+
+        return DocxParagraphStyle(
+            line_spacing_body=(
+                line_spacing_body
+                if line_spacing_body is not None
+                else self.line_spacing_body
+            ),
+            line_spacing_note=(
+                line_spacing_note
+                if line_spacing_note is not None
+                else self.line_spacing_note
+            ),
+            first_line_indent_cm=(
+                first_line_indent_cm
+                if first_line_indent_cm is not None
+                else self.first_line_indent_cm
+            ),
+            note_prefixes=(
+                note_prefixes if note_prefixes is not None else self.note_prefixes
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +274,52 @@ class DocxStyle:
     sizes: DocxSizeStyle
     table: DocxTableStyle
     paragraph: DocxParagraphStyle
+
+    def with_overrides(
+        self,
+        *,
+        fonts: DocxFontStyle | None = None,
+        sizes: DocxSizeStyle | None = None,
+        table: DocxTableStyle | None = None,
+        paragraph: DocxParagraphStyle | None = None,
+    ) -> DocxStyle:
+        """Create a copy with selected style components replaced.
+
+        Args:
+            fonts (DocxFontStyle | None): Optional font style replacement.
+            sizes (DocxSizeStyle | None): Optional size style replacement.
+            table (DocxTableStyle | None): Optional table style replacement.
+            paragraph (DocxParagraphStyle | None): Optional paragraph style
+                replacement.
+
+        Returns:
+            DocxStyle: New complete style object with replacements applied.
+        """
+
+        return DocxStyle(
+            fonts=fonts or self.fonts,
+            sizes=sizes or self.sizes,
+            table=table or self.table,
+            paragraph=paragraph or self.paragraph,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DocxFieldMarkerOptions:
+    """Options for DOCX field update markers and field freezing.
+
+    These options operate directly on DOCX XML and do not require LibreOffice or
+    UNO. Field refresh through LibreOffice is configured separately with
+    `DocxFieldRefreshOptions`.
+
+    Attributes:
+        should_update_fields (bool): Whether fields should be marked for update.
+        should_freeze_fields (bool): Whether field markup should be frozen while
+            preserving current field result text.
+    """
+
+    should_update_fields: bool = True
+    should_freeze_fields: bool = False
 
 
 @dataclass(frozen=True, slots=True)

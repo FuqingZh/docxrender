@@ -15,6 +15,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 from docxrender import (
+    DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxHeaderFooterImageOptions,
@@ -121,6 +122,7 @@ class TestPublicContract:
 
         assert docxrender.__all__ == [
             "DocxRenderer",
+            "DocxFieldMarkerOptions",
             "DocxFieldRefreshOptions",
             "DocxFontStyle",
             "DocxHeaderFooterImageOptions",
@@ -199,6 +201,28 @@ class TestPublicContract:
         assert updated.pt_heading_by_level == {1: 18.0, 2: 15.0}
         assert sizes.pt_heading_by_level[1] == 16.0
 
+    def test_docx_style_component_overrides_change_selected_values(self) -> None:
+        style = create_docx_style()
+
+        updated = style.with_overrides(
+            fonts=style.fonts.with_overrides(font_name_body_east_asia="黑体"),
+            table=style.table.with_overrides(stripe_fill_color="FFFFFF"),
+            paragraph=style.paragraph.with_overrides(note_prefixes=("Note:",)),
+        )
+
+        assert updated.fonts.font_name_latin == "Times New Roman"
+        assert updated.fonts.font_name_body_east_asia == "黑体"
+        assert updated.table.border_color == "000000"
+        assert updated.table.stripe_fill_color == "FFFFFF"
+        assert updated.paragraph.line_spacing_body == 1.5
+        assert updated.paragraph.note_prefixes == ("Note:",)
+
+    def test_docx_field_marker_options_default_to_update_only(self) -> None:
+        options = DocxFieldMarkerOptions()
+
+        assert options.should_update_fields is True
+        assert options.should_freeze_fields is False
+
     def test_docx_renderer_style_returns_default_style(self) -> None:
         style = DocxRenderer().style
 
@@ -249,6 +273,7 @@ class TestPublicContract:
             options = (
                 DocxRenderer()
                 .with_sizes(pt_body=11.0)
+                .with_field_update_markers(should_update_fields=False)
                 .with_field_refresh(field_refresh)
                 .with_header_footer_images(header_footer)
                 .build_options(
@@ -261,6 +286,8 @@ class TestPublicContract:
             )
 
             assert options.style.sizes.pt_body == 11.0
+            assert options.should_update_fields is False
+            assert options.should_freeze_fields is False
             assert options.field_refresh is field_refresh
             assert options.header_footer_images is header_footer
             header_footer_options = options.header_footer_images
@@ -329,6 +356,15 @@ class TestPublicContract:
     def test_docx_renderer_requires_field_refresh_runtime_paths(self) -> None:
         with pytest.raises(ValueError, match="exe_libreoffice"):
             DocxRenderer().with_field_refresh()
+
+    def test_docx_renderer_field_markers_can_be_built_from_options(self) -> None:
+        marker_options = DocxFieldMarkerOptions(
+            should_update_fields=False,
+            should_freeze_fields=True,
+        )
+        renderer = DocxRenderer().with_field_update_markers(marker_options)
+
+        assert renderer.field_markers is marker_options
 
     def test_docx_writer_is_not_public(self) -> None:
         import docxrender
@@ -399,6 +435,20 @@ class TestPublicContract:
                 settings = zip_file.read("word/settings.xml").decode("utf-8")
             assert "<w:updateFields" in settings
 
+    def test_docx_renderer_can_disable_existing_docx_field_markers(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_docx = path_tmp / "report.docx"
+            _write_template(file_docx)
+
+            DocxRenderer(file_docx=file_docx).with_field_update_markers(
+                should_update_fields=False,
+            ).write_docx()
+
+            with zipfile.ZipFile(file_docx) as zip_file:
+                settings = zip_file.read("word/settings.xml").decode("utf-8")
+            assert "<w:updateFields" not in settings
+
     def test_docx_renderer_write_pdf_uses_current_docx(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
@@ -427,6 +477,25 @@ class TestPublicContract:
 
             assert result.file_pdf == file_pdf
             assert captured_options[0].file_in_docx == file_docx
+
+    def test_docx_renderer_pdf_options_use_field_marker_state(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_docx = path_tmp / "report.docx"
+            options = (
+                DocxRenderer(file_docx=file_docx)
+                .with_field_update_markers(should_update_fields=False)
+                .with_pdf_conversion(
+                    exe_libreoffice=Path("/usr/bin/libreoffice"),
+                    dir_user_profile=path_tmp / "lo-profile",
+                    file_out_pdf=path_tmp / "report.pdf",
+                )
+                .pdf_options
+            )
+
+            assert options is not None
+            assert options.should_update_fields is False
+            assert options.should_freeze_fields is False
 
     def test_docx_renderer_does_not_expose_convert_docx_to_pdf(self) -> None:
         assert not hasattr(DocxRenderer(), "convert_docx_to_pdf")
