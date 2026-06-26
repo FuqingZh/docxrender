@@ -62,7 +62,7 @@ jobs:
           PY
 
       - name: Install dependencies
-        run: pdm sync -G dev --no-self
+        run: pdm sync -G dev
 
       - name: Lint
         run: pdm run ruff check .
