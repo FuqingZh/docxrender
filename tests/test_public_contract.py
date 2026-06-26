@@ -4,12 +4,12 @@ import base64
 import sys
 import tempfile
 import types
-import unittest
 import zipfile
 from pathlib import Path
 from typing import Any, cast
 from unittest import mock
 
+import pytest
 from docx import Document
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
@@ -114,28 +114,25 @@ def create_docx_style() -> DocxStyle:
     )
 
 
-class PublicContractTest(unittest.TestCase):
+class TestPublicContract:
     def test_public_imports_are_explicit(self) -> None:
         import docxrender
 
-        self.assertEqual(
-            docxrender.__all__,
-            [
-                "DocxWriter",
-                "DocxFieldRefreshOptions",
-                "DocxFontStyle",
-                "DocxParagraphStyle",
-                "DocxSizeStyle",
-                "DocxStyle",
-                "DocxTableStyle",
-                "DocxToPdfOptions",
-                "DocxToPdfResult",
-                "DocxWriteOptions",
-                "DocxWriteResult",
-                "convert_docx_to_pdf",
-                "write_docx",
-            ],
-        )
+        assert docxrender.__all__ == [
+            "DocxWriter",
+            "DocxFieldRefreshOptions",
+            "DocxFontStyle",
+            "DocxParagraphStyle",
+            "DocxSizeStyle",
+            "DocxStyle",
+            "DocxTableStyle",
+            "DocxToPdfOptions",
+            "DocxToPdfResult",
+            "DocxWriteOptions",
+            "DocxWriteResult",
+            "convert_docx_to_pdf",
+            "write_docx",
+        ]
 
     def test_docx_write_options_construct_from_structured_inputs(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -149,11 +146,11 @@ class PublicContractTest(unittest.TestCase):
                 style=create_docx_style(),
             )
 
-            self.assertEqual(options.anchor_token, "__REPORT_BODY_ANCHOR__")
-            self.assertIs(options.should_update_fields, True)
-            self.assertIs(options.should_freeze_fields, False)
-            self.assertIsNone(options.field_refresh)
-            self.assertEqual(options.style.paragraph.first_line_indent_cm, 0.74)
+            assert options.anchor_token == "__REPORT_BODY_ANCHOR__"
+            assert options.should_update_fields is True
+            assert options.should_freeze_fields is False
+            assert options.field_refresh is None
+            assert options.style.paragraph.first_line_indent_cm == 0.74
 
     def test_docx_to_pdf_options_construct_from_conversion_inputs(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -165,8 +162,8 @@ class PublicContractTest(unittest.TestCase):
                 dir_user_profile=path_tmp / "lo-profile",
             )
 
-            self.assertIsNone(options.file_out_docx_refreshed)
-            self.assertIsNone(options.file_listener_log)
+            assert options.file_out_docx_refreshed is None
+            assert options.file_listener_log is None
 
     def test_public_results_are_structured_paths(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -174,18 +171,18 @@ class PublicContractTest(unittest.TestCase):
             result_docx = DocxWriteResult(file_docx=path_tmp / "report.docx")
             result_pdf = DocxToPdfResult(file_pdf=path_tmp / "report.pdf")
 
-            self.assertEqual(result_docx.file_docx.name, "report.docx")
-            self.assertEqual(result_pdf.file_pdf.name, "report.pdf")
-            self.assertIsNone(result_pdf.file_docx_refreshed)
+            assert result_docx.file_docx.name == "report.docx"
+            assert result_pdf.file_pdf.name == "report.pdf"
+            assert result_pdf.file_docx_refreshed is None
 
     def test_docx_size_style_with_overrides_changes_selected_values(self) -> None:
         sizes = create_docx_style().sizes
 
         updated = sizes.with_overrides(pt_body=11.0)
 
-        self.assertEqual(updated.pt_body, 11.0)
-        self.assertEqual(updated.pt_caption, sizes.pt_caption)
-        self.assertEqual(updated.pt_heading_by_level, sizes.pt_heading_by_level)
+        assert updated.pt_body == 11.0
+        assert updated.pt_caption == sizes.pt_caption
+        assert updated.pt_heading_by_level == sizes.pt_heading_by_level
 
     def test_docx_size_style_with_overrides_copies_heading_sizes(self) -> None:
         sizes = create_docx_style().sizes
@@ -194,19 +191,19 @@ class PublicContractTest(unittest.TestCase):
         updated = sizes.with_overrides(pt_heading_by_level=heading_sizes)
         heading_sizes[1] = 99.0
 
-        self.assertEqual(updated.pt_heading_by_level, {1: 18.0, 2: 15.0})
-        self.assertEqual(sizes.pt_heading_by_level[1], 16.0)
+        assert updated.pt_heading_by_level == {1: 18.0, 2: 15.0}
+        assert sizes.pt_heading_by_level[1] == 16.0
 
     def test_docx_writer_style_returns_default_style(self) -> None:
         style = DocxWriter().style
 
-        self.assertEqual(style.fonts.font_name_latin, "Times New Roman")
-        self.assertEqual(style.fonts.font_name_body_east_asia, "宋体")
-        self.assertEqual(style.sizes.pt_body, 12.0)
-        self.assertEqual(style.sizes.pt_heading_by_level[1], 16.0)
-        self.assertEqual(style.sizes.pt_heading_by_level[6], 12.0)
-        self.assertEqual(style.table.border_color, "000000")
-        self.assertEqual(style.paragraph.first_line_indent_cm, 0.74)
+        assert style.fonts.font_name_latin == "Times New Roman"
+        assert style.fonts.font_name_body_east_asia == "宋体"
+        assert style.sizes.pt_body == 12.0
+        assert style.sizes.pt_heading_by_level[1] == 16.0
+        assert style.sizes.pt_heading_by_level[6] == 12.0
+        assert style.table.border_color == "000000"
+        assert style.paragraph.first_line_indent_cm == 0.74
 
     def test_docx_writer_fluent_overrides_are_partial(self) -> None:
         style = (
@@ -218,19 +215,19 @@ class PublicContractTest(unittest.TestCase):
             .style
         )
 
-        self.assertEqual(style.fonts.font_name_latin, "Times New Roman")
-        self.assertEqual(style.fonts.font_name_body_east_asia, "黑体")
-        self.assertEqual(style.sizes.pt_body, 11.0)
-        self.assertEqual(style.sizes.pt_caption, 10.5)
-        self.assertEqual(style.table.border_color, "000000")
-        self.assertEqual(style.table.stripe_fill_color, "FFFFFF")
-        self.assertEqual(style.paragraph.note_prefixes, ("Note:",))
-        self.assertEqual(style.paragraph.line_spacing_body, 1.5)
+        assert style.fonts.font_name_latin == "Times New Roman"
+        assert style.fonts.font_name_body_east_asia == "黑体"
+        assert style.sizes.pt_body == 11.0
+        assert style.sizes.pt_caption == 10.5
+        assert style.table.border_color == "000000"
+        assert style.table.stripe_fill_color == "FFFFFF"
+        assert style.paragraph.note_prefixes == ("Note:",)
+        assert style.paragraph.line_spacing_body == 1.5
 
     def test_docx_writer_build_style_matches_style_property(self) -> None:
         writer = DocxWriter().with_sizes(pt_body=11.0)
 
-        self.assertIs(writer.build_style(), writer.style)
+        assert writer.build_style() is writer.style
 
     def test_docx_writer_build_options_uses_fluent_state(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -253,9 +250,9 @@ class PublicContractTest(unittest.TestCase):
                 )
             )
 
-            self.assertEqual(options.style.sizes.pt_body, 11.0)
-            self.assertIs(options.field_refresh, field_refresh)
-            self.assertEqual(options.anchor_token, "__REPORT_BODY_ANCHOR__")
+            assert options.style.sizes.pt_body == 11.0
+            assert options.field_refresh is field_refresh
+            assert options.anchor_token == "__REPORT_BODY_ANCHOR__"
 
     def test_docx_writer_field_refresh_can_be_built_from_keywords(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -277,18 +274,14 @@ class PublicContractTest(unittest.TestCase):
                 )
             )
 
-            self.assertIsNotNone(options.field_refresh)
-            self.assertEqual(
-                cast(DocxFieldRefreshOptions, options.field_refresh).exe_libreoffice,
-                Path("/usr/bin/libreoffice"),
-            )
-            self.assertIs(
-                cast(DocxFieldRefreshOptions, options.field_refresh).should_require_toc,
-                True,
-            )
+            assert options.field_refresh is not None
+            field_refresh = options.field_refresh
+            assert field_refresh is not None
+            assert field_refresh.exe_libreoffice == Path("/usr/bin/libreoffice")
+            assert field_refresh.should_require_toc is True
 
     def test_docx_writer_requires_field_refresh_runtime_paths(self) -> None:
-        with self.assertRaisesRegex(ValueError, "exe_libreoffice"):
+        with pytest.raises(ValueError, match="exe_libreoffice"):
             DocxWriter().with_field_refresh()
 
     def test_docx_writer_write_docx_uses_core_writer(self) -> None:
@@ -314,10 +307,9 @@ class PublicContractTest(unittest.TestCase):
             paragraph_by_text = {
                 paragraph.text: paragraph for paragraph in document.paragraphs
             }
-            self.assertEqual(result.file_docx, file_out_docx)
-            self.assertEqual(
-                _run_font_size_pt(_first_text_run(paragraph_by_text["Body."])),
-                11.0,
+            assert result.file_docx == file_out_docx
+            assert (
+                _run_font_size_pt(_first_text_run(paragraph_by_text["Body."])) == 11.0
             )
 
     def test_write_docx_creates_minimal_document(self) -> None:
@@ -353,44 +345,41 @@ class PublicContractTest(unittest.TestCase):
             document = Document(str(result.file_docx))
             texts = [paragraph.text for paragraph in document.paragraphs]
 
-            self.assertEqual(result.file_docx, file_out_docx)
-            self.assertIn("Contract Report", texts)
-            self.assertIn("Heading", texts)
-            self.assertIn("Body first line.\nBody second line.", texts)
-            self.assertIn("注：Note text.", texts)
-            self.assertIn("First item", texts)
-            self.assertIn("Second item", texts)
-            self.assertIn("Example image", texts)
-            self.assertEqual(document.tables[0].cell(0, 0).text, "A")
-            self.assertEqual(document.tables[0].cell(1, 1).text, "2")
-            self.assertEqual(len(document.inline_shapes), 1)
+            assert result.file_docx == file_out_docx
+            assert "Contract Report" in texts
+            assert "Heading" in texts
+            assert "Body first line.\nBody second line." in texts
+            assert "注：Note text." in texts
+            assert "First item" in texts
+            assert "Second item" in texts
+            assert "Example image" in texts
+            assert document.tables[0].cell(0, 0).text == "A"
+            assert document.tables[0].cell(1, 1).text == "2"
+            assert len(document.inline_shapes) == 1
             paragraph_by_text = {
                 paragraph.text: paragraph for paragraph in document.paragraphs
             }
-            self.assertEqual(
-                _run_font_size_pt(_first_text_run(paragraph_by_text["Heading"])),
-                16.0,
+            assert (
+                _run_font_size_pt(_first_text_run(paragraph_by_text["Heading"]))
+                == 16.0
             )
-            self.assertEqual(
+            assert (
                 _run_font_size_pt(
                     _first_text_run(
                         paragraph_by_text["Body first line.\nBody second line."]
                     )
-                ),
-                12.0,
+                )
+                == 12.0
             )
-            self.assertEqual(
-                _run_font_size_pt(_first_text_run(paragraph_by_text["注：Note text."])),
-                10.5,
+            assert (
+                _run_font_size_pt(_first_text_run(paragraph_by_text["注：Note text."]))
+                == 10.5
             )
-            self.assertEqual(
-                _run_font_size_pt(_first_text_run(paragraph_by_text["Example image"])),
-                10.5,
+            assert (
+                _run_font_size_pt(_first_text_run(paragraph_by_text["Example image"]))
+                == 10.5
             )
-            self.assertIn(
-                'w:val="single"',
-                cast(Any, document.tables[0].cell(0, 0))._tc.xml,
-            )
+            assert 'w:val="single"' in cast(Any, document.tables[0].cell(0, 0))._tc.xml
 
     def test_write_docx_without_field_refresh_does_not_import_uno(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -422,8 +411,8 @@ class PublicContractTest(unittest.TestCase):
                     )
                 )
 
-            self.assertEqual(result.file_docx, file_out_docx)
-            self.assertTrue(file_out_docx.exists())
+            assert result.file_docx == file_out_docx
+            assert file_out_docx.exists()
 
     def test_write_docx_field_refresh_overwrites_output_docx(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -460,8 +449,8 @@ class PublicContractTest(unittest.TestCase):
                     )
                 )
 
-            self.assertEqual(result.file_docx, file_out_docx)
-            self.assertEqual(file_out_docx.read_bytes(), b"refreshed")
+            assert result.file_docx == file_out_docx
+            assert file_out_docx.read_bytes() == b"refreshed"
 
     def test_write_docx_field_refresh_can_write_separate_output_docx(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -474,7 +463,7 @@ class PublicContractTest(unittest.TestCase):
             def fake_refresh_docx_with_uno(**kwargs: object) -> None:
                 file_in = cast(Path, kwargs["file_in_docx"])
                 file_out = cast(Path, kwargs["file_out_docx"])
-                self.assertEqual(file_in, file_out_docx)
+                assert file_in == file_out_docx
                 file_out.write_bytes(b"refreshed separate")
 
             from docxrender import pdf_uno
@@ -502,9 +491,9 @@ class PublicContractTest(unittest.TestCase):
                     )
                 )
 
-            self.assertEqual(result.file_docx, file_out_docx)
-            self.assertTrue(file_out_docx.exists())
-            self.assertEqual(file_refreshed.read_bytes(), b"refreshed separate")
+            assert result.file_docx == file_out_docx
+            assert file_out_docx.exists()
+            assert file_refreshed.read_bytes() == b"refreshed separate"
 
     def test_write_docx_field_refresh_can_require_toc_and_freeze(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -543,8 +532,8 @@ class PublicContractTest(unittest.TestCase):
                 )
 
             text_document = _read_docx_part(file_out_docx, "word/document.xml")
-            self.assertIn("Rendered TOC", text_document)
-            self.assertNotIn("fldChar", text_document)
+            assert "Rendered TOC" in text_document
+            assert "fldChar" not in text_document
 
     def test_write_docx_field_refresh_reports_missing_required_toc(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -565,7 +554,7 @@ class PublicContractTest(unittest.TestCase):
                 "refresh_docx_with_uno",
                 side_effect=fake_refresh_docx_with_uno,
             ):
-                with self.assertRaisesRegex(RuntimeError, "TOC result"):
+                with pytest.raises(RuntimeError, match="TOC result"):
                     write_docx(
                         DocxWriteOptions(
                             file_template=file_template,
@@ -592,13 +581,10 @@ class PublicContractTest(unittest.TestCase):
                 port=23001,
             )
 
-            self.assertEqual(command[0], "/usr/bin/libreoffice")
-            self.assertIn("--headless", command)
-            self.assertIn(
-                "--accept=socket,host=127.0.0.1,port=23001;urp;",
-                command,
-            )
-            self.assertTrue(command[-1].startswith("-env:UserInstallation=file://"))
+            assert command[0] == "/usr/bin/libreoffice"
+            assert "--headless" in command
+            assert "--accept=socket,host=127.0.0.1,port=23001;urp;" in command
+            assert command[-1].startswith("-env:UserInstallation=file://")
 
     def test_convert_docx_to_pdf_stages_input_before_load(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -628,9 +614,9 @@ class PublicContractTest(unittest.TestCase):
             def fake_load_document_or_raise(**kwargs: object) -> FakeDocument:
                 captured.update(kwargs)
                 file_staged = cast(Path, kwargs["file_in_docx_staged"])
-                self.assertNotEqual(file_staged, file_in_docx)
-                self.assertTrue(file_staged.exists())
-                self.assertEqual(file_staged.read_bytes(), file_in_docx.read_bytes())
+                assert file_staged != file_in_docx
+                assert file_staged.exists()
+                assert file_staged.read_bytes() == file_in_docx.read_bytes()
                 file_staged.write_bytes(b"refreshed staged payload")
                 return fake_doc
 
@@ -666,19 +652,16 @@ class PublicContractTest(unittest.TestCase):
             ):
                 result = convert_docx_to_pdf(options_pdf)
 
-            self.assertEqual(result.file_pdf, file_out_pdf)
-            self.assertEqual(result.file_docx_refreshed, file_out_docx_refreshed)
-            self.assertEqual(captured["file_in_docx_source"], file_in_docx)
-            self.assertEqual(captured["file_source_lock"], file_source_lock)
-            self.assertEqual(captured["file_listener_log"], file_listener_log.resolve())
-            self.assertTrue(fake_doc.stored)
-            self.assertTrue(fake_doc.closed)
-            self.assertEqual(len(fake_doc.store_url_calls), 1)
-            self.assertEqual(
-                file_out_docx_refreshed.read_bytes(),
-                b"refreshed staged payload",
-            )
-            self.assertTrue(fake_process.terminated)
+            assert result.file_pdf == file_out_pdf
+            assert result.file_docx_refreshed == file_out_docx_refreshed
+            assert captured["file_in_docx_source"] == file_in_docx
+            assert captured["file_source_lock"] == file_source_lock
+            assert captured["file_listener_log"] == file_listener_log.resolve()
+            assert fake_doc.stored
+            assert fake_doc.closed
+            assert len(fake_doc.store_url_calls) == 1
+            assert file_out_docx_refreshed.read_bytes() == b"refreshed staged payload"
+            assert fake_process.terminated
 
     def test_convert_docx_to_pdf_preserves_load_failure(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -720,10 +703,10 @@ class PublicContractTest(unittest.TestCase):
                     side_effect=RuntimeError("load failed"),
                 ),
             ):
-                with self.assertRaisesRegex(RuntimeError, "load failed"):
+                with pytest.raises(RuntimeError, match="load failed"):
                     convert_docx_to_pdf(options_pdf)
 
-            self.assertTrue(fake_process.terminated)
+            assert fake_process.terminated
 
     def test_pdf_load_failure_fields_include_staged_and_lock_info(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
@@ -752,28 +735,27 @@ class PublicContractTest(unittest.TestCase):
             )
             text_error = "\n".join(fields)
 
-            self.assertIn("error_code=libreoffice_uno_load_failed", text_error)
-            self.assertIn("reason_code=staged_docx_import_failed", text_error)
-            self.assertIn(f"file_in_docx={file_source.resolve()}", text_error)
-            self.assertIn(f"file_in_docx_staged={file_staged.resolve()}", text_error)
-            self.assertIn(f"source_lock_file={file_source_lock.resolve()}", text_error)
-            self.assertIn("probe_swriter_factory=ok", text_error)
-            self.assertIn("load_staged_default_props=failed", text_error)
-            self.assertIn("load_staged_hidden_only=failed", text_error)
-            self.assertIn("listener_log_tail=listener tail", text_error)
-            self.assertIn(
-                "validate_libreoffice=libreoffice --headless --version",
-                text_error,
+            assert "error_code=libreoffice_uno_load_failed" in text_error
+            assert "reason_code=staged_docx_import_failed" in text_error
+            assert f"file_in_docx={file_source.resolve()}" in text_error
+            assert f"file_in_docx_staged={file_staged.resolve()}" in text_error
+            assert f"source_lock_file={file_source_lock.resolve()}" in text_error
+            assert "probe_swriter_factory=ok" in text_error
+            assert "load_staged_default_props=failed" in text_error
+            assert "load_staged_hidden_only=failed" in text_error
+            assert "listener_log_tail=listener tail" in text_error
+            assert (
+                "validate_libreoffice=libreoffice --headless --version" in text_error
             )
-            self.assertIn(
-                "install_debian_ubuntu=sudo apt install libreoffice python3-uno",
-                text_error,
+            assert (
+                "install_debian_ubuntu=sudo apt install libreoffice python3-uno"
+                in text_error
             )
 
     def test_pdf_uno_runtime_is_loaded_only_when_requested(self) -> None:
         with mock.patch("docxrender.pdf_uno.importlib.import_module") as import_module:
             import_module.side_effect = ImportError("missing uno")
-            with self.assertRaisesRegex(RuntimeError, "libreoffice_uno_import_failed"):
+            with pytest.raises(RuntimeError, match="libreoffice_uno_import_failed"):
                 import_uno_module()
             import_module.assert_called_once_with("uno")
 
@@ -781,21 +763,18 @@ class PublicContractTest(unittest.TestCase):
         with mock.patch("docxrender.pdf_uno.importlib.import_module") as import_module:
             import_module.side_effect = ImportError("missing uno")
 
-            with self.assertRaises(RuntimeError) as ctx:
+            with pytest.raises(RuntimeError) as ctx:
                 import_uno_module()
 
-        text_error = str(ctx.exception)
-        self.assertIn("error_code=libreoffice_uno_import_failed", text_error)
-        self.assertIn(
-            "validate_libreoffice=libreoffice --headless --version",
-            text_error,
+        text_error = str(ctx.value)
+        assert "error_code=libreoffice_uno_import_failed" in text_error
+        assert "validate_libreoffice=libreoffice --headless --version" in text_error
+        assert 'validate_uno=python -c "import uno"' in text_error
+        assert (
+            "install_debian_ubuntu=sudo apt install libreoffice python3-uno"
+            in text_error
         )
-        self.assertIn('validate_uno=python -c "import uno"', text_error)
-        self.assertIn(
-            "install_debian_ubuntu=sudo apt install libreoffice python3-uno",
-            text_error,
-        )
-        self.assertIn("docs_libreoffice_parameters=", text_error)
+        assert "docs_libreoffice_parameters=" in text_error
 
     def test_convert_docx_to_pdf_reports_missing_libreoffice_executable(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
@@ -813,16 +792,16 @@ class PublicContractTest(unittest.TestCase):
 
             with (
                 mock.patch.object(pdf_uno, "import_uno_module", return_value=object()),
-                self.assertRaises(FileNotFoundError) as ctx,
+                pytest.raises(FileNotFoundError) as ctx,
             ):
                 convert_docx_to_pdf(options_pdf)
 
-        text_error = str(ctx.exception)
-        self.assertIn("error_code=libreoffice_executable_missing", text_error)
-        self.assertIn("missing-libreoffice", text_error)
-        self.assertIn(
-            "install_debian_ubuntu=sudo apt install libreoffice python3-uno",
-            text_error,
+        text_error = str(ctx.value)
+        assert "error_code=libreoffice_executable_missing" in text_error
+        assert "missing-libreoffice" in text_error
+        assert (
+            "install_debian_ubuntu=sudo apt install libreoffice python3-uno"
+            in text_error
         )
 
     def test_libreoffice_listener_start_failure_includes_guidance(self) -> None:
@@ -838,9 +817,9 @@ class PublicContractTest(unittest.TestCase):
                     "Popen",
                     side_effect=PermissionError("not executable"),
                 ),
-                self.assertRaisesRegex(
+                pytest.raises(
                     RuntimeError,
-                    "libreoffice_listener_start_failed",
+                    match="libreoffice_listener_start_failed",
                 ) as ctx,
             ):
                 start_libreoffice_listener(
@@ -852,10 +831,10 @@ class PublicContractTest(unittest.TestCase):
                     file_listener_log=path_tmp / "listener.log",
                 )
 
-        text_error = str(ctx.exception)
-        self.assertIn("launch_error=PermissionError", text_error)
-        self.assertIn("listener.log", text_error)
-        self.assertIn("docs_libreoffice_api=", text_error)
+        text_error = str(ctx.value)
+        assert "launch_error=PermissionError" in text_error
+        assert "listener.log" in text_error
+        assert "docs_libreoffice_api=" in text_error
 
     def test_libreoffice_listener_timeout_includes_guidance(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
@@ -866,20 +845,17 @@ class PublicContractTest(unittest.TestCase):
 
             with (
                 mock.patch.object(pdf_uno, "LISTENER_START_TIMEOUT_SECONDS", 0.0),
-                self.assertRaisesRegex(
+                pytest.raises(
                     TimeoutError,
-                    "libreoffice_uno_listener_timeout",
+                    match="libreoffice_uno_listener_timeout",
                 ) as ctx,
             ):
                 wait_for_listener(23001, file_listener_log=file_listener_log)
 
-        text_error = str(ctx.exception)
-        self.assertIn("listener_port=23001", text_error)
-        self.assertIn("listener_log_tail=cannot start", text_error)
-        self.assertIn(
-            "validate_libreoffice=libreoffice --headless --version",
-            text_error,
-        )
+        text_error = str(ctx.value)
+        assert "listener_port=23001" in text_error
+        assert "listener_log_tail=cannot start" in text_error
+        assert "validate_libreoffice=libreoffice --headless --version" in text_error
 
     def test_docx_field_update_markers_are_written(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_fields_") as dir_tmp:
@@ -890,8 +866,8 @@ class PublicContractTest(unittest.TestCase):
 
             text_settings = _read_docx_part(file_docx, "word/settings.xml")
             text_document = _read_docx_part(file_docx, "word/document.xml")
-            self.assertIn('<w:updateFields w:val="true"/>', text_settings)
-            self.assertIn('w:dirty="true"', text_document)
+            assert '<w:updateFields w:val="true"/>' in text_settings
+            assert 'w:dirty="true"' in text_document
 
     def test_docx_field_freeze_preserves_result_text(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_fields_") as dir_tmp:
@@ -903,11 +879,11 @@ class PublicContractTest(unittest.TestCase):
 
             text_settings = _read_docx_part(file_docx, "word/settings.xml")
             text_document = _read_docx_part(file_docx, "word/document.xml")
-            self.assertNotIn("w:updateFields", text_settings)
-            self.assertNotIn("fldChar", text_document)
-            self.assertNotIn("instrText", text_document)
-            self.assertNotIn("w:dirty", text_document)
-            self.assertIn("Rendered TOC", text_document)
+            assert "w:updateFields" not in text_settings
+            assert "fldChar" not in text_document
+            assert "instrText" not in text_document
+            assert "w:dirty" not in text_document
+            assert "Rendered TOC" in text_document
 
     def test_docxrender_does_not_import_product_repositories(self) -> None:
         product_module_prefixes = (
@@ -925,11 +901,7 @@ class PublicContractTest(unittest.TestCase):
             )
         ]
 
-        self.assertEqual(imported_product_modules, [])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert imported_product_modules == []
 
 
 def _write_template(file_template: Path) -> None:

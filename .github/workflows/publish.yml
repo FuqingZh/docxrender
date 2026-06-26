@@ -70,8 +70,12 @@ jobs:
       - name: Type check
         run: pdm run pyright
 
+      - name: Type check advisory
+        continue-on-error: true
+        run: pdm run ty check .
+
       - name: Unit tests
-        run: pdm run python -m unittest discover -v
+        run: pdm run python -m pytest -v
 
       - name: Clean local packaging artifacts
         run: |

@@ -246,8 +246,16 @@ the package.
 Run the current test suite:
 
 ```bash
-pdm run python -m unittest discover -v
+pdm run python -m pytest -v
 ```
+
+`ty` is available as an advisory type checker beside pyright:
+
+```bash
+pdm run ty check .
+```
+
+Pyright remains the primary type gate.
 
 The suite currently covers public API construction, minimal DOCX writing,
 markdown body insertion, basic style application, and the boundary that
