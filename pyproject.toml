@@ -1,0 +1,52 @@
+[project]
+name = "docxkit"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "FuqingZhang", email = "fuqin.zhang@proton.me"},
+]
+dependencies = [
+    "docxtpl>=0.20.2",
+    "python-docx>=1.2.0",
+]
+requires-python = ">=3.13"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+]
+
+[tool.pyright]
+include = [
+    "src",
+    "tests",
+]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "none"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.19",
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
+    "types-unopy>=2.0.0",
+    "twine>=6.2.0",
+]
