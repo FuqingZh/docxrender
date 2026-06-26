@@ -64,15 +64,18 @@ import UNO and works without LibreOffice.
 ## Public API
 
 The stable public API is exported from the package root. Product repositories
-should prefer `from docxrender import ...`; implementation modules such as
-`docxrender.markdown` and `docxrender.docx` are technical
-layers and are not compatibility-stable public contracts.
+should prefer `DocxRenderer` for normal use. The dataclasses and module-level
+functions remain public for advanced callers that want explicit contracts,
+configuration adapters, or focused tests. Implementation modules such as
+`docxrender.markdown` and `docxrender.docx` are technical layers and are not
+compatibility-stable public contracts.
 
 ```python
 from docxrender import (
-    DocxWriter,
+    DocxRenderer,
     DocxFieldRefreshOptions,
     DocxFontStyle,
+    DocxHeaderFooterImageOptions,
     DocxParagraphStyle,
     DocxSizeStyle,
     DocxStyle,
@@ -98,15 +101,15 @@ DocxWriteOptions(
 )
 ```
 
-Minimal fluent DOCX write example:
+Minimal `DocxRenderer` DOCX write example:
 
 ```python
 from pathlib import Path
 
-from docxrender import DocxWriter
+from docxrender import DocxRenderer
 
 result = (
-    DocxWriter()
+    DocxRenderer()
     .with_fonts(
         font_name_latin="Times New Roman",
         font_name_body_east_asia="宋体",
@@ -133,6 +136,11 @@ result = (
         line_spacing_note=1.2,
         first_line_indent_cm=0.74,
     )
+    .with_header_footer_images(
+        file_header_image=Path("header.png"),
+        file_footer_image=Path("footer.png"),
+        idx_section_start=1,
+    )
     .write_docx(
         file_template=Path("template.docx"),
         file_out_docx=Path("report.docx"),
@@ -148,7 +156,41 @@ print(result.file_docx)
 template. `dir_base` is the base directory used to resolve relative image paths
 inside that Markdown body.
 
-Explicit dataclass DOCX write example:
+`DocxRenderer` can also start from an existing DOCX and run only later
+technical steps:
+
+```python
+from pathlib import Path
+
+from docxrender import DocxRenderer
+
+DocxRenderer(file_docx=Path("report.docx")).with_field_refresh(
+    exe_libreoffice=Path("/usr/bin/libreoffice"),
+    dir_user_profile=Path("tmp/lo-profile"),
+    should_require_toc=True,
+).write_docx()
+```
+
+The same renderer can convert the current DOCX to PDF:
+
+```python
+from pathlib import Path
+
+from docxrender import DocxRenderer
+
+result = (
+    DocxRenderer(file_docx=Path("report.docx"))
+    .with_pdf_conversion(
+        exe_libreoffice=Path("/usr/bin/libreoffice"),
+        dir_user_profile=Path("tmp/lo-profile"),
+        file_out_pdf=Path("report.pdf"),
+    )
+    .write_pdf()
+)
+print(result.file_pdf)
+```
+
+Advanced explicit dataclass DOCX write example:
 
 ```python
 from pathlib import Path

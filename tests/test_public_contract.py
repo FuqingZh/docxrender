@@ -17,14 +17,15 @@ from docx.text.run import Run
 from docxrender import (
     DocxFieldRefreshOptions,
     DocxFontStyle,
+    DocxHeaderFooterImageOptions,
     DocxParagraphStyle,
+    DocxRenderer,
     DocxSizeStyle,
     DocxStyle,
     DocxTableStyle,
     DocxToPdfOptions,
     DocxToPdfResult,
     DocxWriteOptions,
-    DocxWriter,
     DocxWriteResult,
     convert_docx_to_pdf,
     write_docx,
@@ -119,9 +120,10 @@ class TestPublicContract:
         import docxrender
 
         assert docxrender.__all__ == [
-            "DocxWriter",
+            "DocxRenderer",
             "DocxFieldRefreshOptions",
             "DocxFontStyle",
+            "DocxHeaderFooterImageOptions",
             "DocxParagraphStyle",
             "DocxSizeStyle",
             "DocxStyle",
@@ -150,6 +152,7 @@ class TestPublicContract:
             assert options.should_update_fields is True
             assert options.should_freeze_fields is False
             assert options.field_refresh is None
+            assert options.header_footer_images is None
             assert options.style.paragraph.first_line_indent_cm == 0.74
 
     def test_docx_to_pdf_options_construct_from_conversion_inputs(self) -> None:
@@ -164,6 +167,8 @@ class TestPublicContract:
 
             assert options.file_out_docx_refreshed is None
             assert options.file_listener_log is None
+            assert options.should_update_fields is True
+            assert options.should_freeze_fields is False
 
     def test_public_results_are_structured_paths(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -194,8 +199,8 @@ class TestPublicContract:
         assert updated.pt_heading_by_level == {1: 18.0, 2: 15.0}
         assert sizes.pt_heading_by_level[1] == 16.0
 
-    def test_docx_writer_style_returns_default_style(self) -> None:
-        style = DocxWriter().style
+    def test_docx_renderer_style_returns_default_style(self) -> None:
+        style = DocxRenderer().style
 
         assert style.fonts.font_name_latin == "Times New Roman"
         assert style.fonts.font_name_body_east_asia == "宋体"
@@ -205,9 +210,9 @@ class TestPublicContract:
         assert style.table.border_color == "000000"
         assert style.paragraph.first_line_indent_cm == 0.74
 
-    def test_docx_writer_fluent_overrides_are_partial(self) -> None:
+    def test_docx_renderer_fluent_overrides_are_partial(self) -> None:
         style = (
-            DocxWriter()
+            DocxRenderer()
             .with_fonts(font_name_body_east_asia="黑体")
             .with_sizes(pt_body=11.0)
             .with_table(stripe_fill_color="FFFFFF")
@@ -224,23 +229,28 @@ class TestPublicContract:
         assert style.paragraph.note_prefixes == ("Note:",)
         assert style.paragraph.line_spacing_body == 1.5
 
-    def test_docx_writer_build_style_matches_style_property(self) -> None:
-        writer = DocxWriter().with_sizes(pt_body=11.0)
+    def test_docx_renderer_build_style_matches_style_property(self) -> None:
+        renderer = DocxRenderer().with_sizes(pt_body=11.0)
 
-        assert writer.build_style() is writer.style
+        assert renderer.build_style() is renderer.style
 
-    def test_docx_writer_build_options_uses_fluent_state(self) -> None:
+    def test_docx_renderer_build_options_uses_fluent_state(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             field_refresh = DocxFieldRefreshOptions(
                 exe_libreoffice=Path("/usr/bin/libreoffice"),
                 dir_user_profile=path_tmp / "lo-profile",
             )
+            header_footer = DocxHeaderFooterImageOptions(
+                file_header_image=path_tmp / "header.png",
+                idx_section_start=1,
+            )
 
             options = (
-                DocxWriter()
+                DocxRenderer()
                 .with_sizes(pt_body=11.0)
                 .with_field_refresh(field_refresh)
+                .with_header_footer_images(header_footer)
                 .build_options(
                     file_template=path_tmp / "template.docx",
                     file_out_docx=path_tmp / "report.docx",
@@ -252,14 +262,50 @@ class TestPublicContract:
 
             assert options.style.sizes.pt_body == 11.0
             assert options.field_refresh is field_refresh
+            assert options.header_footer_images is header_footer
+            header_footer_options = options.header_footer_images
+            assert header_footer_options is not None
+            assert header_footer_options.idx_section_start == 1
             assert options.anchor_token == "__REPORT_BODY_ANCHOR__"
+            renderer = DocxRenderer().with_field_refresh(field_refresh)
+            built = renderer.build_options(
+                file_template=path_tmp / "template.docx",
+                file_out_docx=path_tmp / "report.docx",
+                context={},
+                markdown_body="Body.",
+                dir_base=path_tmp,
+            )
+            assert renderer.docx_options is built
 
-    def test_docx_writer_field_refresh_can_be_built_from_keywords(self) -> None:
+    def test_docx_renderer_header_footer_images_can_be_built_from_keywords(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            options = (
+                DocxRenderer()
+                .with_header_footer_images(
+                    file_header_image=path_tmp / "header.png",
+                    idx_section_start=1,
+                )
+                .build_options(
+                    file_template=path_tmp / "template.docx",
+                    file_out_docx=path_tmp / "report.docx",
+                    context={},
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+            )
+
+            assert options.header_footer_images is not None
+            assert options.header_footer_images.idx_section_start == 1
+
+    def test_docx_renderer_field_refresh_can_be_built_from_keywords(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
 
             options = (
-                DocxWriter()
+                DocxRenderer()
                 .with_field_refresh(
                     exe_libreoffice=Path("/usr/bin/libreoffice"),
                     dir_user_profile=path_tmp / "lo-profile",
@@ -280,11 +326,16 @@ class TestPublicContract:
             assert field_refresh.exe_libreoffice == Path("/usr/bin/libreoffice")
             assert field_refresh.should_require_toc is True
 
-    def test_docx_writer_requires_field_refresh_runtime_paths(self) -> None:
+    def test_docx_renderer_requires_field_refresh_runtime_paths(self) -> None:
         with pytest.raises(ValueError, match="exe_libreoffice"):
-            DocxWriter().with_field_refresh()
+            DocxRenderer().with_field_refresh()
 
-    def test_docx_writer_write_docx_uses_core_writer(self) -> None:
+    def test_docx_writer_is_not_public(self) -> None:
+        import docxrender
+
+        assert not hasattr(docxrender, "DocxWriter")
+
+    def test_docx_renderer_write_docx_uses_core_writer(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
             file_template = path_tmp / "template.docx"
@@ -292,7 +343,7 @@ class TestPublicContract:
             _write_template(file_template)
 
             result = (
-                DocxWriter()
+                DocxRenderer()
                 .with_sizes(pt_body=11.0)
                 .write_docx(
                     file_template=file_template,
@@ -311,6 +362,108 @@ class TestPublicContract:
             assert (
                 _run_font_size_pt(_first_text_run(paragraph_by_text["Body."])) == 11.0
             )
+
+    def test_docx_renderer_clone_copies_state_without_linking(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            base = (
+                DocxRenderer(file_docx=path_tmp / "report.docx")
+                .with_sizes(pt_body=11.0)
+                .with_pdf_conversion(
+                    exe_libreoffice=Path("/usr/bin/libreoffice"),
+                    dir_user_profile=path_tmp / "lo-profile",
+                    file_out_pdf=path_tmp / "report.pdf",
+                )
+            )
+            clone = DocxRenderer(base, file_docx=path_tmp / "edited.docx").with_sizes(
+                pt_body=10.0
+            )
+
+            assert base.file_docx == path_tmp / "report.docx"
+            assert clone.file_docx == path_tmp / "edited.docx"
+            assert base.style.sizes.pt_body == 11.0
+            assert clone.style.sizes.pt_body == 10.0
+            assert clone.pdf_options is not None
+            assert clone.pdf_options.file_in_docx == path_tmp / "edited.docx"
+
+    def test_docx_renderer_can_postprocess_existing_docx(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_docx = path_tmp / "report.docx"
+            _write_template(file_docx)
+
+            result = DocxRenderer(file_docx=file_docx).write_docx()
+
+            assert result.file_docx == file_docx
+            with zipfile.ZipFile(file_docx) as zip_file:
+                settings = zip_file.read("word/settings.xml").decode("utf-8")
+            assert "<w:updateFields" in settings
+
+    def test_docx_renderer_write_pdf_uses_current_docx(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_docx = path_tmp / "report.docx"
+            file_pdf = path_tmp / "report.pdf"
+            _write_template(file_docx)
+            captured_options: list[DocxToPdfOptions] = []
+
+            def fake_convert(options: DocxToPdfOptions) -> DocxToPdfResult:
+                captured_options.append(options)
+                return DocxToPdfResult(file_pdf=options.file_out_pdf)
+
+            with mock.patch(
+                "docxrender.renderer.convert_docx_to_pdf",
+                side_effect=fake_convert,
+            ):
+                result = (
+                    DocxRenderer(file_docx=file_docx)
+                    .with_pdf_conversion(
+                        exe_libreoffice=Path("/usr/bin/libreoffice"),
+                        dir_user_profile=path_tmp / "lo-profile",
+                        file_out_pdf=file_pdf,
+                    )
+                    .write_pdf()
+                )
+
+            assert result.file_pdf == file_pdf
+            assert captured_options[0].file_in_docx == file_docx
+
+    def test_docx_renderer_does_not_expose_convert_docx_to_pdf(self) -> None:
+        assert not hasattr(DocxRenderer(), "convert_docx_to_pdf")
+
+    def test_docx_renderer_write_pdf_writes_docx_before_pdf(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_docx = path_tmp / "report.docx"
+            file_pdf = path_tmp / "report.pdf"
+            _write_template(file_template)
+            captured_options: list[DocxToPdfOptions] = []
+
+            def fake_convert(options: DocxToPdfOptions) -> DocxToPdfResult:
+                captured_options.append(options)
+                return DocxToPdfResult(file_pdf=options.file_out_pdf)
+
+            with mock.patch(
+                "docxrender.renderer.convert_docx_to_pdf",
+                side_effect=fake_convert,
+            ):
+                renderer = DocxRenderer().with_pdf_conversion(
+                    exe_libreoffice=Path("/usr/bin/libreoffice"),
+                    dir_user_profile=path_tmp / "lo-profile",
+                    file_out_pdf=file_pdf,
+                )
+                result = renderer.write_pdf(
+                    file_template=file_template,
+                    file_out_docx=file_docx,
+                    context={"report_title": "PDF"},
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+
+            assert result.file_pdf == file_pdf
+            assert renderer.file_docx == file_docx
+            assert captured_options[0].file_in_docx == file_docx
 
     def test_write_docx_creates_minimal_document(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -603,6 +756,7 @@ class TestPublicContract:
                 dir_user_profile=path_tmp / "lo-profile",
                 file_out_docx_refreshed=file_out_docx_refreshed,
                 file_listener_log=file_listener_log,
+                should_update_fields=False,
             )
             fake_process = FakeProcess()
             fake_doc = FakeDocument()
@@ -673,6 +827,7 @@ class TestPublicContract:
                 file_in_docx=file_in_docx,
                 file_out_pdf=path_tmp / "report.pdf",
                 dir_user_profile=path_tmp / "lo-profile",
+                should_update_fields=False,
             )
             fake_process = FakeProcess()
             fake_uno = types.SimpleNamespace(
@@ -786,6 +941,7 @@ class TestPublicContract:
                 file_in_docx=file_in_docx,
                 file_out_pdf=path_tmp / "report.pdf",
                 dir_user_profile=path_tmp / "lo-profile",
+                should_update_fields=False,
             )
 
             from docxrender import pdf_uno

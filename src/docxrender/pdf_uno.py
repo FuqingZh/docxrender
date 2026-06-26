@@ -18,6 +18,10 @@ from docxrender.contracts import (
     DocxToPdfOptions,
     DocxToPdfResult,
 )
+from docxrender.docx.fields import (
+    write_docx_field_update_markers,
+    write_frozen_docx_fields,
+)
 
 LISTENER_HOST = "127.0.0.1"
 LISTENER_START_TIMEOUT_SECONDS = 15.0
@@ -151,6 +155,8 @@ def convert_docx_to_pdf_with_uno(state: DocxToPdfState) -> DocxToPdfState:
             options.file_in_docx,
             dir_stage=Path(dir_stage_tmp),
         )
+        if options.should_update_fields:
+            write_docx_field_update_markers(file_in_docx_staged)
         uno_module = import_uno_module()
         port = select_free_port()
         (
@@ -193,6 +199,8 @@ def convert_docx_to_pdf_with_uno(state: DocxToPdfState) -> DocxToPdfState:
                     ),
                 )
                 if options.file_out_docx_refreshed is not None:
+                    if options.should_freeze_fields:
+                        write_frozen_docx_fields(file_in_docx_staged)
                     shutil.copy2(file_in_docx_staged, options.file_out_docx_refreshed)
             finally:
                 close_document(doc)

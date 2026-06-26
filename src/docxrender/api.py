@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import Any, cast
 
 from docx import Document
 from docxtpl import DocxTemplate
 
 from docxrender.contracts import (
+    DocxFieldRefreshOptions,
+    DocxHeaderFooterImageOptions,
     DocxToPdfOptions,
     DocxToPdfResult,
     DocxWriteOptions,
     DocxWriteResult,
 )
+from docxrender.docx.assets import apply_header_footer_images
 from docxrender.docx.body import insert_markdown_blocks
 from docxrender.docx.fields import (
     write_docx_field_update_markers,
@@ -45,12 +50,54 @@ def write_docx(options: DocxWriteOptions) -> DocxWriteResult:
         style=options.style,
     )
     document.save(str(options.file_out_docx))
-    if options.should_update_fields:
-        write_docx_field_update_markers(options.file_out_docx)
-    if options.field_refresh is None and options.should_freeze_fields:
-        write_frozen_docx_fields(options.file_out_docx)
-    refresh_docx_fields(options.file_out_docx, options=options.field_refresh)
+    postprocess_docx(
+        file_docx=options.file_out_docx,
+        should_update_fields=options.should_update_fields,
+        should_freeze_fields=options.should_freeze_fields,
+        field_refresh=options.field_refresh,
+        header_footer_images=options.header_footer_images,
+    )
     return DocxWriteResult(file_docx=options.file_out_docx)
+
+
+def write_existing_docx(
+    *,
+    file_in_docx: Path,
+    file_out_docx: Path | None = None,
+    should_update_fields: bool = True,
+    should_freeze_fields: bool = False,
+    field_refresh: DocxFieldRefreshOptions | None = None,
+    header_footer_images: DocxHeaderFooterImageOptions | None = None,
+) -> DocxWriteResult:
+    """Apply DOCX post-processing to an existing DOCX file.
+
+    Args:
+        file_in_docx (Path): Existing DOCX path.
+        file_out_docx (Path | None): Optional output path. When omitted, the input
+            DOCX is edited in place.
+        should_update_fields (bool): Whether DOCX fields should be marked for update.
+        should_freeze_fields (bool): Whether DOCX fields should be frozen.
+        field_refresh (DocxFieldRefreshOptions | None): Optional UNO refresh options.
+        header_footer_images (DocxHeaderFooterImageOptions | None): Optional
+            header/footer image options.
+
+    Returns:
+        DocxWriteResult: Result containing the edited DOCX path.
+    """
+
+    path_in = file_in_docx
+    path_out = path_in if file_out_docx is None else file_out_docx
+    if path_out != path_in:
+        path_out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path_in, path_out)
+    postprocess_docx(
+        file_docx=path_out,
+        should_update_fields=should_update_fields,
+        should_freeze_fields=should_freeze_fields,
+        field_refresh=field_refresh,
+        header_footer_images=header_footer_images,
+    )
+    return DocxWriteResult(file_docx=path_out)
 
 
 def convert_docx_to_pdf(options: DocxToPdfOptions) -> DocxToPdfResult:
@@ -80,3 +127,19 @@ def _write_template_docx(options: DocxWriteOptions) -> None:
     context.setdefault("body_anchor", options.anchor_token)
     template.render(context)
     template.save(str(options.file_out_docx))
+
+
+def postprocess_docx(
+    *,
+    file_docx: Path,
+    should_update_fields: bool,
+    should_freeze_fields: bool,
+    field_refresh: DocxFieldRefreshOptions | None,
+    header_footer_images: DocxHeaderFooterImageOptions | None,
+) -> None:
+    apply_header_footer_images(file_docx, options=header_footer_images)
+    if should_update_fields:
+        write_docx_field_update_markers(file_docx)
+    if field_refresh is None and should_freeze_fields:
+        write_frozen_docx_fields(file_docx)
+    refresh_docx_fields(file_docx, options=field_refresh)

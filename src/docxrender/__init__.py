@@ -2,6 +2,7 @@ from docxrender.api import convert_docx_to_pdf, write_docx
 from docxrender.contracts import (
     DocxFieldRefreshOptions,
     DocxFontStyle,
+    DocxHeaderFooterImageOptions,
     DocxParagraphStyle,
     DocxSizeStyle,
     DocxStyle,
@@ -11,12 +12,13 @@ from docxrender.contracts import (
     DocxWriteOptions,
     DocxWriteResult,
 )
-from docxrender.writer import DocxWriter
+from docxrender.renderer import DocxRenderer
 
 __all__ = [
-    "DocxWriter",
+    "DocxRenderer",
     "DocxFieldRefreshOptions",
     "DocxFontStyle",
+    "DocxHeaderFooterImageOptions",
     "DocxParagraphStyle",
     "DocxSizeStyle",
     "DocxStyle",

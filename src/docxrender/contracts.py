@@ -23,7 +23,7 @@ class DocxFontStyle:
 
 @dataclass(frozen=True, slots=True)
 class DocxSizeStyle:
-    """Point sizes used by the DOCX writer.
+    """Point sizes used by DOCX rendering.
 
     Attributes:
         pt_title_page_title (float): Title-page report title size.
@@ -181,6 +181,31 @@ class DocxFieldRefreshOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class DocxHeaderFooterImageOptions:
+    """Header and footer image replacement options.
+
+    Attributes:
+        file_header_image (Path | None): Image file to place in headers.
+        file_footer_image (Path | None): Image file to place in footers.
+        width_cm (float): Inserted image width in centimeters when no existing
+            image relationship can be replaced.
+        should_replace_existing (bool): Whether existing header/footer image media
+            should be replaced.
+        should_insert_when_missing (bool): Whether images should be inserted when
+            the target header/footer does not already contain image media.
+        idx_section_start (int): Zero-based section index where missing image
+            insertion starts.
+    """
+
+    file_header_image: Path | None = None
+    file_footer_image: Path | None = None
+    width_cm: float = 16.0
+    should_replace_existing: bool = True
+    should_insert_when_missing: bool = True
+    idx_section_start: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class DocxWriteOptions:
     """Inputs for writing a DOCX file.
 
@@ -197,6 +222,8 @@ class DocxWriteOptions:
         should_freeze_fields (bool): Whether DOCX fields should be frozen after writing.
         field_refresh (DocxFieldRefreshOptions | None): Optional UNO field refresh
             settings.
+        header_footer_images (DocxHeaderFooterImageOptions | None): Optional header
+            and footer image replacement settings.
     """
 
     file_template: Path
@@ -209,6 +236,7 @@ class DocxWriteOptions:
     should_update_fields: bool = True
     should_freeze_fields: bool = False
     field_refresh: DocxFieldRefreshOptions | None = None
+    header_footer_images: DocxHeaderFooterImageOptions | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +261,10 @@ class DocxToPdfOptions:
         dir_user_profile (Path): Isolated LibreOffice user profile directory.
         file_out_docx_refreshed (Path | None): Optional refreshed DOCX output path.
         file_listener_log (Path | None): Optional LibreOffice listener log path.
+        should_update_fields (bool): Whether staged DOCX fields should be marked for
+            update before LibreOffice loads the document.
+        should_freeze_fields (bool): Whether refreshed field results should be frozen
+            in `file_out_docx_refreshed` when that output is requested.
     """
 
     exe_libreoffice: Path
@@ -241,6 +273,8 @@ class DocxToPdfOptions:
     dir_user_profile: Path
     file_out_docx_refreshed: Path | None = None
     file_listener_log: Path | None = None
+    should_update_fields: bool = True
+    should_freeze_fields: bool = False
 
 
 @dataclass(frozen=True, slots=True)
