@@ -93,9 +93,9 @@ jobs:
           /tmp/docxrender-wheel-venv/bin/python -m pip install -U pip
           /tmp/docxrender-wheel-venv/bin/python -m pip install dist/*.whl
           /tmp/docxrender-wheel-venv/bin/python - <<'PY'
-          from docxrender import DocxWriter, convert_docx_to_pdf, write_docx
+          from docxrender import DocxRenderer, convert_docx_to_pdf, write_docx
 
-          assert DocxWriter().style.sizes.pt_body == 12.0
+          assert DocxRenderer().style.sizes.pt_body == 12.0
           assert callable(write_docx)
           assert callable(convert_docx_to_pdf)
           print("docxrender wheel import ok")
