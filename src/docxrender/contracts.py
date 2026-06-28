@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+
+
+def create_empty_context_defaults() -> dict[str, Any]:
+    """Create an empty default-injection mapping for template rendering."""
+
+    return {}
+
+
+def create_empty_inline_images() -> dict[str, DocxTemplateImageSpec]:
+    """Create an empty template inline-image mapping."""
+
+    return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -393,6 +405,51 @@ class DocxBodyAnchorOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class DocxMarkdownOptions:
+    """Options for parsing the CommonMark-ish markdown body subset.
+
+    Attributes:
+        should_parse_inline_bold (bool): Whether `**bold**` spans should become
+            bold DOCX runs.
+        should_parse_inline_code (bool): Whether inline code backticks should be
+            removed while preserving the code text.
+        should_parse_links_as_text (bool): Whether markdown links should be
+            reduced to their visible link text.
+        should_parse_image_width_attr (bool): Whether image `{width=...%}`
+            attributes should control rendered image width.
+        default_image_width_pct (float): Default image width percent when no
+            parsed width attribute is available.
+    """
+
+    should_parse_inline_bold: bool = True
+    should_parse_inline_code: bool = True
+    should_parse_links_as_text: bool = True
+    should_parse_image_width_attr: bool = True
+    default_image_width_pct: float = 90.0
+
+
+@dataclass(frozen=True, slots=True)
+class DocxBodyRenderPolicy:
+    """Structural policy for rendering markdown blocks into a DOCX body.
+
+    Attributes:
+        should_number_headings (bool): Whether unnumbered headings should receive
+            generated hierarchical numbers.
+        rule_ordered_list (Literal["word_style", "plain_text"]): How ordered lists
+            should be written.
+        rule_unordered_list (Literal["word_style", "plain_text"]): How unordered
+            lists should be written.
+        should_stripe_table_rows (bool): Whether table body rows should use stripe
+            fill color from `DocxStyle.table`.
+    """
+
+    should_number_headings: bool = False
+    rule_ordered_list: Literal["word_style", "plain_text"] = "word_style"
+    rule_unordered_list: Literal["word_style", "plain_text"] = "word_style"
+    should_stripe_table_rows: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class DocxWriteOptions:
     """Inputs for writing a DOCX file.
 
@@ -404,6 +461,14 @@ class DocxWriteOptions:
         dir_base (Path): Base directory used to resolve relative image paths.
         style (DocxStyle): Structured DOCX style settings.
         body_anchor (DocxBodyAnchorOptions): Body insertion anchor settings.
+        markdown (DocxMarkdownOptions): Markdown parsing options for the shared
+            CommonMark-ish subset.
+        body_render_policy (DocxBodyRenderPolicy): Structural markdown-to-DOCX
+            body rendering policy.
+        template_context_policy (DocxTemplateContextPolicy): Generic `docxtpl`
+            context merge and validation policy.
+        template_inline_images (Mapping[str, DocxTemplateImageSpec]): Template image
+            specs materialized on the active template instance at render time.
         should_update_fields (bool): Whether DOCX fields should be prepared for update.
         should_freeze_fields (bool): Whether DOCX fields should be frozen after writing.
         field_refresh (DocxFieldRefreshOptions | None): Optional UNO field refresh
@@ -419,10 +484,94 @@ class DocxWriteOptions:
     dir_base: Path
     style: DocxStyle
     body_anchor: DocxBodyAnchorOptions = DocxBodyAnchorOptions()
+    markdown: DocxMarkdownOptions = DocxMarkdownOptions()
+    body_render_policy: DocxBodyRenderPolicy = DocxBodyRenderPolicy()
+    template_context_policy: DocxTemplateContextPolicy = field(
+        default_factory=lambda: DocxTemplateContextPolicy()
+    )
+    template_inline_images: Mapping[str, DocxTemplateImageSpec] = field(
+        default_factory=create_empty_inline_images
+    )
     should_update_fields: bool = True
     should_freeze_fields: bool = False
     field_refresh: DocxFieldRefreshOptions | None = None
     header_footer_images: DocxHeaderFooterImageOptions | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DocxTemplateContextPolicy:
+    """Policy for generic `docxtpl` context merge and validation.
+
+    Attributes:
+        rule_merge (Literal["merge"]): Whether default and caller context should be
+            merged into one render context.
+        rule_conflict (Literal["caller_wins", "defaults_win"]): Which side wins when
+            both context sources provide the same key.
+        required_keys (tuple[str, ...]): Keys that must exist after merge and before
+            template rendering.
+    """
+
+    rule_merge: Literal["merge"] = "merge"
+    rule_conflict: Literal["caller_wins", "defaults_win"] = "caller_wins"
+    required_keys: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DocxTemplateImageSpec:
+    """Template image specification materialized to `docxtpl.InlineImage` at render.
+
+    Attributes:
+        file_image (Path): Image file path.
+        width_mm (int | None): Optional image width in millimeters.
+        height_mm (int | None): Optional image height in millimeters.
+        anchor (str | None): Optional hyperlink anchor.
+    """
+
+    file_image: Path
+    width_mm: int | None = None
+    height_mm: int | None = None
+    anchor: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DocxTemplateRenderOptions:
+    """Inputs for generic `docxtpl` DOCX template rendering.
+
+    Attributes:
+        file_template (Path): Input DOCX template path.
+        file_out_docx (Path): Output DOCX path to write.
+        context (Mapping[str, Any]): Caller-provided `docxtpl` render context.
+        context_defaults (Mapping[str, Any]): Default context values injected only
+            when allowed by `context_policy`.
+        inline_images (Mapping[str, DocxTemplateImageSpec]): Template image specs
+            materialized on the active template instance at render time.
+        context_policy (DocxTemplateContextPolicy): Context merge and validation
+            policy.
+    """
+
+    file_template: Path
+    file_out_docx: Path
+    context: Mapping[str, Any]
+    context_defaults: Mapping[str, Any] = field(
+        default_factory=create_empty_context_defaults
+    )
+    inline_images: Mapping[str, DocxTemplateImageSpec] = field(
+        default_factory=create_empty_inline_images
+    )
+    context_policy: DocxTemplateContextPolicy = field(
+        default_factory=lambda: DocxTemplateContextPolicy()
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class DocxTemplateRenderResult:
+    """Result of generic DOCX template rendering.
+
+    Attributes:
+        file_docx (Path): Rendered DOCX path.
+    """
+
+    file_docx: Path
 
 
 @dataclass(frozen=True, slots=True)

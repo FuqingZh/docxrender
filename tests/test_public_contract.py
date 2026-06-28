@@ -11,30 +11,48 @@ from unittest import mock
 
 import pytest
 from docx import Document
+from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 from docxrender import (
     DocxBodyAnchorOptions,
+    DocxBodyRenderPolicy,
     DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxHeaderFooterImageOptions,
+    DocxMarkdownOptions,
     DocxParagraphStyle,
     DocxRenderer,
     DocxSizeStyle,
     DocxStyle,
     DocxTableStyle,
+    DocxTemplateContextPolicy,
+    DocxTemplateImageSpec,
+    DocxTemplateRenderOptions,
+    DocxTemplateRenderResult,
     DocxToPdfOptions,
     DocxToPdfResult,
     DocxWriteOptions,
     DocxWriteResult,
     convert_docx_to_pdf,
     write_docx,
+    write_docx_template,
 )
 from docxrender.docx.fields import (
     write_docx_field_update_markers,
     write_frozen_docx_fields,
+)
+from docxrender.markdown import (
+    MarkdownHeading,
+    MarkdownImage,
+    MarkdownOrderedList,
+    MarkdownParagraph,
+    MarkdownTable,
+    MarkdownTextSegment,
+    MarkdownUnorderedList,
+    parse_markdown_blocks,
 )
 from docxrender.pdf_uno import (
     create_libreoffice_listener_command,
@@ -124,19 +142,26 @@ class TestPublicContract:
         assert docxrender.__all__ == [
             "DocxRenderer",
             "DocxBodyAnchorOptions",
+            "DocxBodyRenderPolicy",
             "DocxFieldMarkerOptions",
             "DocxFieldRefreshOptions",
             "DocxFontStyle",
             "DocxHeaderFooterImageOptions",
+            "DocxMarkdownOptions",
             "DocxParagraphStyle",
             "DocxSizeStyle",
             "DocxStyle",
             "DocxTableStyle",
+            "DocxTemplateContextPolicy",
+            "DocxTemplateImageSpec",
+            "DocxTemplateRenderOptions",
+            "DocxTemplateRenderResult",
             "DocxToPdfOptions",
             "DocxToPdfResult",
             "DocxWriteOptions",
             "DocxWriteResult",
             "convert_docx_to_pdf",
+            "write_docx_template",
             "write_docx",
         ]
 
@@ -155,6 +180,11 @@ class TestPublicContract:
             assert options.body_anchor.anchor_token == "__REPORT_BODY_ANCHOR__"
             assert options.body_anchor.rule_match == "equals"
             assert options.body_anchor.rule_missing == "append"
+            assert options.markdown.should_parse_inline_bold is True
+            assert options.markdown.should_parse_inline_code is True
+            assert options.markdown.should_parse_links_as_text is True
+            assert options.markdown.should_parse_image_width_attr is True
+            assert options.markdown.default_image_width_pct == 90.0
             assert options.should_update_fields is True
             assert options.should_freeze_fields is False
             assert options.field_refresh is None
@@ -184,12 +214,56 @@ class TestPublicContract:
             assert options.should_update_fields is True
             assert options.should_freeze_fields is False
 
+    def test_docx_markdown_options_default_to_commonmarkish_subset(self) -> None:
+        options = DocxMarkdownOptions()
+
+        assert options.should_parse_inline_bold is True
+        assert options.should_parse_inline_code is True
+        assert options.should_parse_links_as_text is True
+        assert options.should_parse_image_width_attr is True
+        assert options.default_image_width_pct == 90.0
+
+    def test_docx_body_render_policy_defaults_to_current_renderer_behavior(
+        self,
+    ) -> None:
+        policy = DocxBodyRenderPolicy()
+
+        assert policy.should_number_headings is False
+        assert policy.rule_ordered_list == "word_style"
+        assert policy.rule_unordered_list == "word_style"
+        assert policy.should_stripe_table_rows is False
+
+    def test_docx_template_render_options_default_context_defaults_to_empty(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            options = DocxTemplateRenderOptions(
+                file_template=path_tmp / "template.docx",
+                file_out_docx=path_tmp / "report.docx",
+                context={"report_title": "Example"},
+            )
+
+            assert options.context_defaults == {}
+            assert options.context_policy == DocxTemplateContextPolicy()
+
+    def test_docx_template_context_policy_defaults_to_caller_wins(self) -> None:
+        policy = DocxTemplateContextPolicy()
+
+        assert policy.rule_merge == "merge"
+        assert policy.rule_conflict == "caller_wins"
+        assert policy.required_keys == ()
+
     def test_public_results_are_structured_paths(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
+            result_template = DocxTemplateRenderResult(
+                file_docx=path_tmp / "template-rendered.docx"
+            )
             result_docx = DocxWriteResult(file_docx=path_tmp / "report.docx")
             result_pdf = DocxToPdfResult(file_pdf=path_tmp / "report.pdf")
 
+            assert result_template.file_docx.name == "template-rendered.docx"
             assert result_docx.file_docx.name == "report.docx"
             assert result_pdf.file_pdf.name == "report.pdf"
             assert result_pdf.file_docx_refreshed is None
@@ -265,6 +339,95 @@ class TestPublicContract:
         assert style.paragraph.note_prefixes == ("Note:",)
         assert style.paragraph.line_spacing_body == 1.5
 
+    def test_docx_renderer_with_markdown_overrides_markdown_options(self) -> None:
+        renderer = DocxRenderer().with_markdown(
+            should_parse_inline_bold=False,
+            should_parse_inline_code=False,
+            should_parse_links_as_text=False,
+            should_parse_image_width_attr=False,
+            default_image_width_pct=75.0,
+        )
+
+        assert renderer.markdown.should_parse_inline_bold is False
+        assert renderer.markdown.should_parse_inline_code is False
+        assert renderer.markdown.should_parse_links_as_text is False
+        assert renderer.markdown.should_parse_image_width_attr is False
+        assert renderer.markdown.default_image_width_pct == 75.0
+
+    def test_docx_renderer_with_body_render_policy_overrides_policy(self) -> None:
+        renderer = DocxRenderer().with_body_render_policy(
+            should_number_headings=True,
+            rule_ordered_list="plain_text",
+            rule_unordered_list="plain_text",
+            should_stripe_table_rows=True,
+        )
+
+        assert renderer.body_render_policy == DocxBodyRenderPolicy(
+            should_number_headings=True,
+            rule_ordered_list="plain_text",
+            rule_unordered_list="plain_text",
+            should_stripe_table_rows=True,
+        )
+
+    def test_docx_renderer_with_template_copies_context(self) -> None:
+        context = {"report_title": "Example"}
+
+        renderer = DocxRenderer().with_template(context=context)
+        context["report_title"] = "Changed"
+
+        assert renderer.template_context == {"report_title": "Example"}
+
+    def test_docx_renderer_with_template_returns_new_renderer(self) -> None:
+        base = DocxRenderer()
+        derived = base.with_template(
+            file_template=Path("template.docx"),
+            context={"report_title": "Example"},
+        )
+
+        assert base is not derived
+        assert base.template_context == {}
+        assert base.file_docx is None
+        assert derived.template_context == {"report_title": "Example"}
+
+    def test_docx_renderer_with_template_sets_policy(self) -> None:
+        renderer = DocxRenderer().with_template(
+            rule_conflict="defaults_win",
+            required_keys=("report_title", "body_anchor"),
+        )
+
+        assert renderer.template_context_policy == DocxTemplateContextPolicy(
+            rule_merge="merge",
+            rule_conflict="defaults_win",
+            required_keys=("report_title", "body_anchor"),
+        )
+
+    def test_docx_renderer_with_template_copies_inline_images(self) -> None:
+        inline_images = {
+            "cover_image": DocxTemplateImageSpec(
+                file_image=Path("cover.png"),
+                width_mm=80,
+            )
+        }
+
+        renderer = DocxRenderer().with_template(inline_images=inline_images)
+        inline_images["cover_image"] = DocxTemplateImageSpec(
+            file_image=Path("other.png"),
+            width_mm=40,
+        )
+
+        assert renderer.build_options(
+            file_template=Path("template.docx"),
+            file_out_docx=Path("report.docx"),
+            context={},
+            markdown_body="Body.",
+            dir_base=Path("."),
+        ).template_inline_images == {
+            "cover_image": DocxTemplateImageSpec(
+                file_image=Path("cover.png"),
+                width_mm=80,
+            )
+        }
+
     def test_docx_renderer_build_style_matches_style_property(self) -> None:
         renderer = DocxRenderer().with_sizes(pt_body=11.0)
 
@@ -284,14 +447,16 @@ class TestPublicContract:
 
             options = (
                 DocxRenderer()
+                .with_template(
+                    file_template=path_tmp / "template.docx",
+                    context={"report_title": "Builder"},
+                )
                 .with_sizes(pt_body=11.0)
                 .with_field_update_markers(should_update_fields=False)
                 .with_field_refresh(field_refresh)
                 .with_header_footer_images(header_footer)
                 .build_options(
-                    file_template=path_tmp / "template.docx",
                     file_out_docx=path_tmp / "report.docx",
-                    context={"report_title": "Builder"},
                     markdown_body="Body.",
                     dir_base=path_tmp,
                 )
@@ -314,7 +479,90 @@ class TestPublicContract:
                 markdown_body="Body.",
                 dir_base=path_tmp,
             )
-            assert renderer.docx_options is built
+            assert renderer.docx_options is None
+            assert built.field_refresh is field_refresh
+
+    def test_docx_renderer_build_options_carries_body_render_policy(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            policy = DocxBodyRenderPolicy(
+                should_number_headings=True,
+                rule_ordered_list="plain_text",
+            )
+            built = (
+                DocxRenderer()
+                .with_body_render_policy(policy)
+                .build_options(
+                    file_template=path_tmp / "template.docx",
+                    file_out_docx=path_tmp / "report.docx",
+                    context={},
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+            )
+
+            assert built.body_render_policy is policy
+
+    def test_docx_renderer_build_options_carries_markdown_options(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            built = (
+                DocxRenderer()
+                .with_template(
+                    file_template=path_tmp / "template.docx",
+                    context={"report_title": "Builder"},
+                )
+                .with_markdown(default_image_width_pct=72.0)
+                .build_options(
+                    file_out_docx=path_tmp / "report.docx",
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+            )
+
+            assert built.markdown.default_image_width_pct == 72.0
+
+    def test_docx_renderer_build_options_can_use_stored_template_context(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            built = (
+                DocxRenderer()
+                .with_template(
+                    file_template=path_tmp / "template.docx",
+                    context={"report_title": "Stored"},
+                )
+                .build_options(
+                    file_out_docx=path_tmp / "report.docx",
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+            )
+
+            assert built.context == {"report_title": "Stored"}
+            assert built.template_context_policy == DocxTemplateContextPolicy()
+
+    def test_docx_renderer_build_options_carries_template_context_policy(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            built = (
+                DocxRenderer()
+                .with_template(
+                    file_template=path_tmp / "template.docx",
+                    context={"report_title": "Stored"},
+                    required_keys=("report_title",),
+                )
+                .build_options(
+                    file_out_docx=path_tmp / "report.docx",
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+            )
+
+            assert built.template_context_policy == DocxTemplateContextPolicy(
+                required_keys=("report_title",)
+            )
 
     def test_docx_renderer_body_anchor_can_be_built_from_keywords(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -405,6 +653,17 @@ class TestPublicContract:
 
         assert renderer.field_markers is marker_options
 
+    def test_docx_renderer_build_options_requires_template_file(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+
+            with pytest.raises(ValueError, match="file_template is required"):
+                DocxRenderer().build_options(
+                    file_out_docx=path_tmp / "report.docx",
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+
     def test_docx_writer_is_not_public(self) -> None:
         import docxrender
 
@@ -437,6 +696,59 @@ class TestPublicContract:
             assert (
                 _run_font_size_pt(_first_text_run(paragraph_by_text["Body."])) == 11.0
             )
+
+    def test_docx_renderer_can_write_template_only(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "rendered.docx"
+            _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+            result = (
+                DocxRenderer()
+                .with_template(
+                    file_template=file_template,
+                    context={"report_title": "Template Only"},
+                )
+                .write_docx_template(
+                    file_out_docx=file_out_docx,
+                )
+            )
+
+            texts = [
+                paragraph.text
+                for paragraph in Document(str(result.file_docx)).paragraphs
+            ]
+            assert result.file_docx == file_out_docx
+            assert "Template Only" in texts
+            assert "{{ body_anchor }}" not in texts
+
+    def test_docx_renderer_write_docx_can_use_stored_template_context(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            _write_template(file_template)
+
+            result = (
+                DocxRenderer()
+                .with_template(
+                    file_template=file_template,
+                    context={"report_title": "Stored Context"},
+                )
+                .write_docx(
+                    file_out_docx=file_out_docx,
+                    markdown_body="Body.",
+                    dir_base=path_tmp,
+                )
+            )
+
+            texts = [
+                paragraph.text
+                for paragraph in Document(str(result.file_docx)).paragraphs
+            ]
+            assert result.file_docx == file_out_docx
+            assert "Stored Context" in texts
 
     def test_docx_renderer_clone_copies_state_without_linking(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -539,6 +851,97 @@ class TestPublicContract:
     def test_docx_renderer_does_not_expose_convert_docx_to_pdf(self) -> None:
         assert not hasattr(DocxRenderer(), "convert_docx_to_pdf")
 
+    def test_parse_markdown_blocks_supports_commonmarkish_features(self) -> None:
+        blocks = parse_markdown_blocks(
+            "# Heading **Bold**\n\n"
+            "Body with **bold**, `code`, and [link](https://example.com).  \n"
+            "Body line 2.\n\n"
+            "- Bullet one\n"
+            "- Bullet **two**\n\n"
+            "1. Ordered one\n"
+            "2. Ordered two\n\n"
+            "| A | B |\n"
+            "| --- | :---: |\n"
+            "| 1 | 2 |\n\n"
+            "![Caption **Bold**](image.png){width=76%}\n"
+        )
+
+        assert blocks[0] == MarkdownHeading(
+            level=1,
+            text=(
+                MarkdownTextSegment("Heading "),
+                MarkdownTextSegment("Bold", is_bold=True),
+            ),
+        )
+        assert blocks[1] == MarkdownParagraph(
+            text=(
+                MarkdownTextSegment("Body with "),
+                MarkdownTextSegment("bold", is_bold=True),
+                MarkdownTextSegment(", code, and link.\nBody line 2."),
+            )
+        )
+        assert blocks[2] == MarkdownUnorderedList(
+            items=(
+                (MarkdownTextSegment("Bullet one"),),
+                (
+                    MarkdownTextSegment("Bullet "),
+                    MarkdownTextSegment("two", is_bold=True),
+                ),
+            )
+        )
+        assert blocks[3] == MarkdownOrderedList(
+            items=(
+                (MarkdownTextSegment("Ordered one"),),
+                (MarkdownTextSegment("Ordered two"),),
+            )
+        )
+        assert blocks[4] == MarkdownTable(
+            rows=(
+                (
+                    (MarkdownTextSegment("A"),),
+                    (MarkdownTextSegment("B"),),
+                ),
+                (
+                    (MarkdownTextSegment("1"),),
+                    (MarkdownTextSegment("2"),),
+                ),
+            )
+        )
+        assert blocks[5] == MarkdownImage(
+            caption=(
+                MarkdownTextSegment("Caption "),
+                MarkdownTextSegment("Bold", is_bold=True),
+            ),
+            path="image.png",
+            width_pct=76.0,
+        )
+
+    def test_parse_markdown_blocks_can_disable_inline_markdown_rules(self) -> None:
+        blocks = parse_markdown_blocks(
+            "Body with **bold**, `code`, and [link](https://example.com).\n\n"
+            "![Caption](image.png){width=76%}\n",
+            options=DocxMarkdownOptions(
+                should_parse_inline_bold=False,
+                should_parse_inline_code=False,
+                should_parse_links_as_text=False,
+                should_parse_image_width_attr=False,
+                default_image_width_pct=55.0,
+            ),
+        )
+
+        assert blocks[0] == MarkdownParagraph(
+            text=(
+                MarkdownTextSegment(
+                    "Body with **bold**, `code`, and [link](https://example.com)."
+                ),
+            )
+        )
+        assert blocks[1] == MarkdownImage(
+            caption=(MarkdownTextSegment("Caption"),),
+            path="image.png",
+            width_pct=55.0,
+        )
+
     def test_docx_renderer_write_pdf_writes_docx_before_pdf(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
             path_tmp = Path(dir_tmp)
@@ -570,7 +973,7 @@ class TestPublicContract:
                 )
 
             assert result.file_pdf == file_pdf
-            assert renderer.file_docx == file_docx
+            assert renderer.file_docx is None
             assert captured_options[0].file_in_docx == file_docx
 
     def test_write_docx_creates_minimal_document(self) -> None:
@@ -587,16 +990,17 @@ class TestPublicContract:
                 file_out_docx=file_out_docx,
                 context={"report_title": "Contract Report"},
                 markdown_body=(
-                    "# Heading\n\n"
-                    "Body first line.  \n"
-                    "Body second line.\n\n"
+                    "# Heading **Bold**\n\n"
+                    "Body first line with **bold** and `code`.  \n"
+                    "Body second line with [link](https://example.com).\n\n"
                     "注：Note text.\n\n"
+                    "- Bullet item\n\n"
                     "1. First item\n"
                     "2. Second item\n\n"
                     "| A | B |\n"
                     "| --- | --- |\n"
                     "| 1 | 2 |\n\n"
-                    "![Example image](image.png){width=20%}\n"
+                    "![Example image](image.png){width=76%}\n"
                 ),
                 dir_base=path_tmp,
                 style=create_docx_style(),
@@ -608,10 +1012,14 @@ class TestPublicContract:
 
             assert result.file_docx == file_out_docx
             assert "Contract Report" in texts
-            assert "Heading" in texts
+            assert "Heading Bold" in texts
             assert "__REPORT_BODY_ANCHOR__" not in texts
-            assert "Body first line.\nBody second line." in texts
+            assert (
+                "Body first line with bold and code.\n"
+                "Body second line with link."
+            ) in texts
             assert "注：Note text." in texts
+            assert "Bullet item" in texts
             assert "First item" in texts
             assert "Second item" in texts
             assert "Example image" in texts
@@ -622,16 +1030,27 @@ class TestPublicContract:
                 paragraph.text: paragraph for paragraph in document.paragraphs
             }
             assert (
-                _run_font_size_pt(_first_text_run(paragraph_by_text["Heading"]))
+                _run_font_size_pt(_first_text_run(paragraph_by_text["Heading Bold"]))
                 == 16.0
             )
             assert (
                 _run_font_size_pt(
                     _first_text_run(
-                        paragraph_by_text["Body first line.\nBody second line."]
+                        paragraph_by_text[
+                            "Body first line with bold and code.\n"
+                            "Body second line with link."
+                        ]
                     )
                 )
                 == 12.0
+            )
+            assert any(run.bold for run in paragraph_by_text["Heading Bold"].runs)
+            assert any(
+                run.bold
+                for run in paragraph_by_text[
+                    "Body first line with bold and code.\nBody second line with link."
+                ].runs
+                if run.text == "bold"
             )
             assert (
                 _run_font_size_pt(_first_text_run(paragraph_by_text["注：Note text."]))
@@ -641,7 +1060,251 @@ class TestPublicContract:
                 _run_font_size_pt(_first_text_run(paragraph_by_text["Example image"]))
                 == 10.5
             )
+            shape_image = cast(Any, document.inline_shapes[0])
+            width_image = shape_image.width.inches
+            assert width_image == pytest.approx(
+                4.56,
+                abs=0.02,
+            )
             assert 'w:val="single"' in cast(Any, document.tables[0].cell(0, 0))._tc.xml
+
+    def test_write_docx_body_render_policy_controls_structural_rendering(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_image = path_tmp / "image.png"
+            file_out_docx = path_tmp / "report.docx"
+            _write_template(file_template)
+            _write_png(file_image)
+
+            write_docx(
+                DocxWriteOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={"report_title": "Contract Report"},
+                    markdown_body=(
+                        "# Heading\n\n"
+                        "## Child\n\n"
+                        "# 9. Existing\n\n"
+                        "1. First\n"
+                        "2. Second\n\n"
+                        "- Bullet\n\n"
+                        "| A | B |\n"
+                        "| --- | --- |\n"
+                        "| 1 | 2 |\n"
+                        "| 3 | 4 |\n\n"
+                        "![Caption](image.png){width=76%}\n"
+                    ),
+                    dir_base=path_tmp,
+                    style=create_docx_style(),
+                    body_render_policy=DocxBodyRenderPolicy(
+                        should_number_headings=True,
+                        rule_ordered_list="plain_text",
+                        rule_unordered_list="plain_text",
+                        should_stripe_table_rows=True,
+                    ),
+                )
+            )
+
+            document = Document(str(file_out_docx))
+            texts = [paragraph.text for paragraph in document.paragraphs]
+            assert "1. Heading" in texts
+            assert "1.1 Child" in texts
+            assert "9. Existing" in texts
+            assert "1. First" in texts
+            assert "2. Second" in texts
+            assert "- Bullet" in texts
+            table_markdown = document.tables[0]
+            body_shading = (
+                cast(Any, table_markdown.rows[1].cells[0])
+                ._tc.tcPr.first_child_found_in("w:shd")
+            )
+            assert body_shading is not None
+            assert body_shading.get(qn("w:fill")) == "D9D9D9"
+            assert cast(Any, table_markdown.cell(1, 0)).vertical_alignment is not None
+            assert (
+                cast(
+                    Any,
+                    table_markdown.cell(1, 0).paragraphs[0].paragraph_format,
+                ).line_spacing
+                == 1.5
+            )
+            paragraph_caption = next(
+                paragraph
+                for paragraph in document.paragraphs
+                if paragraph.text == "Caption"
+            )
+            assert paragraph_caption.alignment == 1
+            paragraph_caption_format = cast(Any, paragraph_caption.paragraph_format)
+            assert paragraph_caption_format.first_line_indent is None
+            assert cast(Any, paragraph_caption.paragraph_format).line_spacing == 1.2
+
+    def test_write_docx_template_renders_generic_docxtpl_context(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "template-rendered.docx"
+            _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+            result = write_docx_template(
+                DocxTemplateRenderOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={"report_title": "Template Render"},
+                    context_defaults={"body_anchor": "AUTO"},
+                )
+            )
+
+            texts = [
+                paragraph.text
+                for paragraph in Document(str(result.file_docx)).paragraphs
+            ]
+            assert result.file_docx == file_out_docx
+            assert "Template Render" in texts
+            assert "AUTO" in texts
+
+    def test_write_docx_template_can_use_defaults_win_conflict_policy(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "template-rendered.docx"
+            _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+            result = write_docx_template(
+                DocxTemplateRenderOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={
+                        "report_title": "Template Render",
+                        "body_anchor": "EXPLICIT",
+                    },
+                    context_defaults={"body_anchor": "DEFAULT"},
+                    context_policy=DocxTemplateContextPolicy(
+                        rule_conflict="defaults_win"
+                    ),
+                )
+            )
+
+            texts = [
+                paragraph.text
+                for paragraph in Document(str(result.file_docx)).paragraphs
+            ]
+            assert result.file_docx == file_out_docx
+            assert "DEFAULT" in texts
+            assert "EXPLICIT" not in texts
+
+    def test_write_docx_template_materializes_inline_images(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "template-rendered.docx"
+            file_image = path_tmp / "cover.png"
+            _write_template_with_anchor_text(file_template, "{{ cover_image }}")
+            _write_png(file_image)
+
+            result = write_docx_template(
+                DocxTemplateRenderOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={"report_title": "Template Render"},
+                    inline_images={
+                        "cover_image": DocxTemplateImageSpec(
+                            file_image=file_image,
+                            width_mm=60,
+                        )
+                    },
+                )
+            )
+
+            document = Document(str(result.file_docx))
+            texts = [paragraph.text for paragraph in document.paragraphs]
+            assert result.file_docx == file_out_docx
+            assert "Template Render" in texts
+            assert len(document.inline_shapes) == 1
+
+    def test_write_docx_template_does_not_override_explicit_context(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "template-rendered.docx"
+            _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+            result = write_docx_template(
+                DocxTemplateRenderOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={
+                        "report_title": "Template Render",
+                        "body_anchor": "EXPLICIT",
+                    },
+                    context_defaults={"body_anchor": "AUTO"},
+                )
+            )
+
+            texts = [
+                paragraph.text
+                for paragraph in Document(str(result.file_docx)).paragraphs
+            ]
+            assert result.file_docx == file_out_docx
+            assert "EXPLICIT" in texts
+            assert "AUTO" not in texts
+
+    def test_write_docx_template_can_require_context_keys(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "template-rendered.docx"
+            _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+            with pytest.raises(ValueError, match="Missing required template context"):
+                write_docx_template(
+                    DocxTemplateRenderOptions(
+                        file_template=file_template,
+                        file_out_docx=file_out_docx,
+                        context={"report_title": "Template Render"},
+                        context_defaults={},
+                        context_policy=DocxTemplateContextPolicy(
+                            required_keys=("report_title", "body_anchor")
+                        ),
+                    )
+                )
+
+    def test_write_docx_uses_template_context_policy_for_body_anchor_default(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_template = path_tmp / "template.docx"
+            file_out_docx = path_tmp / "report.docx"
+            _write_template_with_anchor_text(file_template, "{{ body_anchor }}")
+
+            write_docx(
+                DocxWriteOptions(
+                    file_template=file_template,
+                    file_out_docx=file_out_docx,
+                    context={
+                        "report_title": "Conflict",
+                        "body_anchor": "EXPLICIT",
+                    },
+                    markdown_body="Inserted body.",
+                    dir_base=path_tmp,
+                    style=create_docx_style(),
+                    body_anchor=DocxBodyAnchorOptions(
+                        anchor_token="DEFAULT",
+                        rule_missing="raise",
+                    ),
+                    template_context_policy=DocxTemplateContextPolicy(
+                        rule_conflict="defaults_win"
+                    ),
+                )
+            )
+
+            texts = [
+                paragraph.text
+                for paragraph in Document(str(file_out_docx)).paragraphs
+            ]
+            assert "Inserted body." in texts
+            assert "DEFAULT" not in texts
 
     def test_write_docx_body_anchor_contains_match(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:

@@ -3,31 +3,47 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from docxrender.contracts import DocxMarkdownOptions
+
+
+@dataclass(frozen=True, slots=True)
+class MarkdownTextSegment:
+    text: str
+    is_bold: bool = False
+
+
+MarkdownText = tuple[MarkdownTextSegment, ...]
+
 
 @dataclass(frozen=True, slots=True)
 class MarkdownHeading:
     level: int
-    text: str
+    text: MarkdownText
 
 
 @dataclass(frozen=True, slots=True)
 class MarkdownParagraph:
-    text: str
+    text: MarkdownText
+
+
+@dataclass(frozen=True, slots=True)
+class MarkdownUnorderedList:
+    items: tuple[MarkdownText, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class MarkdownOrderedList:
-    items: tuple[str, ...]
+    items: tuple[MarkdownText, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class MarkdownTable:
-    rows: tuple[tuple[str, ...], ...]
+    rows: tuple[tuple[MarkdownText, ...], ...]
 
 
 @dataclass(frozen=True, slots=True)
 class MarkdownImage:
-    caption: str
+    caption: MarkdownText
     path: str
     width_pct: float
 
@@ -45,6 +61,7 @@ class MarkdownSpacer:
 MarkdownBlock = (
     MarkdownHeading
     | MarkdownParagraph
+    | MarkdownUnorderedList
     | MarkdownOrderedList
     | MarkdownTable
     | MarkdownImage
@@ -53,14 +70,24 @@ MarkdownBlock = (
 )
 
 RE_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+RE_UNORDERED_LIST_ITEM = re.compile(r"^[-*]\s+(.*)$")
 RE_ORDERED_LIST_ITEM = re.compile(r"^\d+\.\s+(.*)$")
 RE_IMAGE = re.compile(
     r"^!\[(?P<caption>.*?)\]\((?P<path>.*?)\)"
     r"(?:\{[^}]*width=(?P<width>\d+)%[^}]*\})?\s*$"
 )
+RE_TABLE_DELIMITER = re.compile(r"^:?-{3,}:?$")
+RE_INLINE_BOLD = re.compile(r"\*\*(.+?)\*\*")
+RE_INLINE_CODE = re.compile(r"`([^`]+)`")
+RE_INLINE_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 
-def parse_markdown_blocks(markdown_body: str) -> tuple[MarkdownBlock, ...]:
+def parse_markdown_blocks(
+    markdown_body: str,
+    *,
+    options: DocxMarkdownOptions | None = None,
+) -> tuple[MarkdownBlock, ...]:
+    options_effective = DocxMarkdownOptions() if options is None else options
     lines = markdown_body.splitlines()
     blocks: list[MarkdownBlock] = []
     idx = 0
@@ -84,7 +111,10 @@ def parse_markdown_blocks(markdown_body: str) -> tuple[MarkdownBlock, ...]:
             blocks.append(
                 MarkdownHeading(
                     level=len(match_heading.group(1)),
-                    text=match_heading.group(2).strip(),
+                    text=parse_markdown_text(
+                        match_heading.group(2).strip(),
+                        options=options_effective,
+                    ),
                 )
             )
             idx += 1
@@ -95,41 +125,57 @@ def parse_markdown_blocks(markdown_body: str) -> tuple[MarkdownBlock, ...]:
             width_raw = match_image.group("width")
             blocks.append(
                 MarkdownImage(
-                    caption=match_image.group("caption"),
+                    caption=parse_markdown_text(
+                        match_image.group("caption"),
+                        options=options_effective,
+                    ),
                     path=match_image.group("path").strip(),
-                    width_pct=float(width_raw) if width_raw is not None else 90.0,
+                    width_pct=_parse_image_width_pct(
+                        width_raw,
+                        options=options_effective,
+                    ),
                 )
             )
             idx += 1
             continue
 
+        match_unordered_item = RE_UNORDERED_LIST_ITEM.match(text)
+        if match_unordered_item is not None:
+            items: list[MarkdownText] = []
+            while idx < len(lines):
+                match_current = RE_UNORDERED_LIST_ITEM.match(lines[idx].strip())
+                if match_current is None:
+                    break
+                items.append(
+                    parse_markdown_text(
+                        match_current.group(1).strip(),
+                        options=options_effective,
+                    )
+                )
+                idx += 1
+            blocks.append(MarkdownUnorderedList(items=tuple(items)))
+            continue
+
         match_list_item = RE_ORDERED_LIST_ITEM.match(text)
         if match_list_item is not None:
-            items: list[str] = []
+            items: list[MarkdownText] = []
             while idx < len(lines):
                 match_current = RE_ORDERED_LIST_ITEM.match(lines[idx].strip())
                 if match_current is None:
                     break
-                items.append(match_current.group(1).strip())
+                items.append(
+                    parse_markdown_text(
+                        match_current.group(1).strip(),
+                        options=options_effective,
+                    )
+                )
                 idx += 1
             blocks.append(MarkdownOrderedList(items=tuple(items)))
             continue
 
-        if text.startswith("|"):
-            rows: list[tuple[str, ...]] = []
-            idx_table = 0
-            while idx < len(lines) and lines[idx].strip().startswith("|"):
-                row = tuple(
-                    cell.strip() for cell in lines[idx].strip().strip("|").split("|")
-                )
-                is_header_separator = idx_table == 1 and all(
-                    set(cell) <= {"-", ":"} for cell in row
-                )
-                if not is_header_separator:
-                    rows.append(row)
-                idx += 1
-                idx_table += 1
-            blocks.append(MarkdownTable(rows=tuple(rows)))
+        if _is_table_start(lines, idx):
+            rows, idx = _parse_table_rows(lines, idx, options=options_effective)
+            blocks.append(MarkdownTable(rows=rows))
             continue
 
         paragraph_parts: list[tuple[str, bool]] = []
@@ -137,6 +183,8 @@ def parse_markdown_blocks(markdown_body: str) -> tuple[MarkdownBlock, ...]:
             line_current = lines[idx]
             text_current = line_current.strip()
             if not text_current:
+                break
+            if _is_table_start(lines, idx):
                 break
             if _is_special_line(text_current):
                 break
@@ -148,8 +196,37 @@ def parse_markdown_blocks(markdown_body: str) -> tuple[MarkdownBlock, ...]:
             ):
                 continue
             break
-        blocks.append(MarkdownParagraph(text=_join_paragraph_parts(paragraph_parts)))
+        blocks.append(
+            MarkdownParagraph(
+                text=parse_markdown_text(
+                    _join_paragraph_parts(paragraph_parts),
+                    options=options_effective,
+                )
+            )
+        )
     return tuple(blocks)
+
+
+def parse_markdown_text(
+    text: str,
+    *,
+    options: DocxMarkdownOptions,
+) -> MarkdownText:
+    cleaned = _clean_inline_text(text, options=options)
+    if not options.should_parse_inline_bold:
+        return (MarkdownTextSegment(cleaned),)
+    segments: list[MarkdownTextSegment] = []
+    idx = 0
+    for match_bold in RE_INLINE_BOLD.finditer(cleaned):
+        if match_bold.start() > idx:
+            segments.append(MarkdownTextSegment(cleaned[idx : match_bold.start()]))
+        segments.append(MarkdownTextSegment(match_bold.group(1), is_bold=True))
+        idx = match_bold.end()
+    if idx < len(cleaned):
+        segments.append(MarkdownTextSegment(cleaned[idx:]))
+    if not segments:
+        return (MarkdownTextSegment(""),)
+    return tuple(segment for segment in segments if segment.text or segment.is_bold)
 
 
 def _strip_hard_break(line: str) -> tuple[str, bool]:
@@ -170,8 +247,64 @@ def _is_special_line(text: str) -> bool:
     return (
         text == r"\newpage"
         or text == r"\vspace"
-        or text.startswith("|")
+        or RE_UNORDERED_LIST_ITEM.match(text) is not None
         or RE_HEADING.match(text) is not None
         or RE_IMAGE.match(text) is not None
         or RE_ORDERED_LIST_ITEM.match(text) is not None
     )
+
+
+def _is_table_start(lines: list[str], idx: int) -> bool:
+    if idx + 1 >= len(lines):
+        return False
+    line_header = lines[idx].strip()
+    line_delimiter = lines[idx + 1].strip()
+    return (
+        line_header.startswith("|")
+        and line_delimiter.startswith("|")
+        and _is_table_delimiter_row(line_delimiter)
+    )
+
+
+def _parse_table_rows(
+    lines: list[str],
+    idx: int,
+    *,
+    options: DocxMarkdownOptions,
+) -> tuple[tuple[tuple[MarkdownText, ...], ...], int]:
+    rows: list[tuple[MarkdownText, ...]] = []
+    idx_current = idx
+    while idx_current < len(lines) and lines[idx_current].strip().startswith("|"):
+        row_text = lines[idx_current].strip().strip("|")
+        row = tuple(
+            parse_markdown_text(cell.strip(), options=options)
+            for cell in row_text.split("|")
+        )
+        if not (idx_current == idx + 1 and _is_table_delimiter_row(lines[idx_current])):
+            rows.append(row)
+        idx_current += 1
+    return tuple(rows), idx_current
+
+
+def _is_table_delimiter_row(line: str) -> bool:
+    row = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return bool(row) and all(RE_TABLE_DELIMITER.match(cell) for cell in row)
+
+
+def _clean_inline_text(text: str, *, options: DocxMarkdownOptions) -> str:
+    text_clean = text
+    if options.should_parse_inline_code:
+        text_clean = RE_INLINE_CODE.sub(r"\1", text_clean)
+    if options.should_parse_links_as_text:
+        text_clean = RE_INLINE_LINK.sub(r"\1", text_clean)
+    return text_clean
+
+
+def _parse_image_width_pct(
+    width_raw: str | None,
+    *,
+    options: DocxMarkdownOptions,
+) -> float:
+    if width_raw is None or not options.should_parse_image_width_attr:
+        return options.default_image_width_pct
+    return float(width_raw)

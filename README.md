@@ -14,15 +14,17 @@ eventual LibreOffice-based PDF conversion. Product repositories own report
 content, workflow resource layout, section rendering, manifest schemas, figure
 selection, captions, and delivery directory semantics.
 
-## Status
+## Capabilities
 
-Current implementation:
+Current package surface:
 
 - Public style/options/result dataclasses are available.
 - `write_docx(...)` can create a minimal DOCX from a DOCX template, context,
   markdown body, image assets, and `DocxStyle`.
-- Markdown support currently covers headings, paragraphs, hard line breaks,
-  ordered lists, tables, images, page breaks, and spacers.
+- Markdown support currently covers a CommonMark-ish shared subset: headings,
+  paragraphs, hard line breaks, unordered lists, ordered lists, pipe tables,
+  images, inline bold, inline code text cleanup, link-text reduction, page
+  breaks, and spacers.
 - Basic Word styling is applied from caller-provided `DocxStyle`.
 - DOCX field update/freeze behavior is implemented through DOCX XML rewriting.
 - `write_docx(...)` can optionally refresh TOC/page fields through LibreOffice
@@ -30,7 +32,7 @@ Current implementation:
 - `convert_docx_to_pdf(...)` converts through LibreOffice UNO when the external
   LibreOffice/UNO runtime is available.
 
-## Install For Local Development
+## Install
 
 ```bash
 pdm install
@@ -42,8 +44,7 @@ Runtime dependencies are declared in `pyproject.toml`:
 - `python-docx`
 
 PDF conversion and DOCX field refresh are optional runtime features. They do
-not require extra Python packages from `docxrender`, but they do require an
-external LibreOffice/UNO runtime.
+require an external LibreOffice/UNO runtime.
 
 ```bash
 libreoffice --headless --version
@@ -56,10 +57,8 @@ On Debian or Ubuntu, that runtime is typically installed outside Python:
 sudo apt install libreoffice python3-uno
 ```
 
-`docxrender` intentionally does not provide a `docxrender[pdf]` extra. Installing a
-Python package should not silently install system software or require
-administrator privileges. Base DOCX writing with `field_refresh=None` does not
-import UNO and works without LibreOffice.
+Base DOCX writing with `field_refresh=None` does not import UNO and works
+without LibreOffice.
 
 ## Public API
 
@@ -70,19 +69,30 @@ configuration adapters, or focused tests. Implementation modules such as
 `docxrender.markdown` and `docxrender.docx` are technical layers and are not
 compatibility-stable public contracts.
 
+`DocxRenderer` follows value semantics. Every `with_*` call returns a new
+renderer object and leaves the original unchanged. Runtime `docxtpl` objects,
+including inline images, are materialized only by terminal methods such as
+`write_docx_template(...)`, `write_docx(...)`, and `write_pdf()`.
+
 ```python
 from docxrender import (
     DocxRenderer,
     DocxBodyAnchorOptions,
+    DocxBodyRenderPolicy,
     DocxFieldMarkerOptions,
     DocxFieldRefreshOptions,
     DocxFontStyle,
     DocxHeaderFooterImageOptions,
+    DocxMarkdownOptions,
     DocxParagraphStyle,
     DocxSizeStyle,
     DocxStyle,
     DocxTableStyle,
+    DocxTemplateContextPolicy,
+    DocxTemplateImageSpec,
+    DocxTemplateRenderOptions,
     DocxWriteOptions,
+    write_docx_template,
     write_docx,
 )
 ```
@@ -113,6 +123,37 @@ DocxWriteOptions(
 )
 ```
 
+`write_docx_template(...)` is the generic `docxtpl` technical boundary. It
+renders a DOCX template with caller context, optional inline images, and
+optional default injections. It does not insert markdown bodies, apply DOCX
+body styling, or run field/PDF post-processing:
+
+```python
+from pathlib import Path
+
+from docxrender import DocxTemplateRenderOptions, write_docx_template
+
+result = write_docx_template(
+    DocxTemplateRenderOptions(
+        file_template=Path("template.docx"),
+        file_out_docx=Path("template-rendered.docx"),
+        context={"report_title": "Example Report"},
+        context_defaults={"body_anchor": "__REPORT_BODY_ANCHOR__"},
+        context_policy=DocxTemplateContextPolicy(
+            rule_conflict="caller_wins",
+            required_keys=("report_title",),
+        ),
+    )
+)
+print(result.file_docx)
+```
+
+`DocxTemplateContextPolicy` controls:
+
+- merge behavior between caller context and default injections
+- conflict priority: `caller_wins` or `defaults_win`
+- required keys that must exist after merge and before render
+
 Minimal `DocxRenderer` DOCX write example:
 
 ```python
@@ -122,6 +163,12 @@ from docxrender import DocxRenderer
 
 result = (
     DocxRenderer()
+    .with_template(
+        file_template=Path("template.docx"),
+        context={"report_title": "Example Report"},
+        rule_conflict="caller_wins",
+        required_keys=("report_title",),
+    )
     .with_fonts(
         font_name_latin="Times New Roman",
         font_name_body_east_asia="宋体",
@@ -153,12 +200,23 @@ result = (
         file_footer_image=Path("footer.png"),
         idx_section_start=1,
     )
+    .with_markdown(
+        should_parse_inline_bold=True,
+        should_parse_inline_code=True,
+        should_parse_links_as_text=True,
+        should_parse_image_width_attr=True,
+        default_image_width_pct=90.0,
+    )
+    .with_body_render_policy(
+        should_number_headings=False,
+        rule_ordered_list="word_style",
+        rule_unordered_list="word_style",
+        should_stripe_table_rows=False,
+    )
     .with_body_anchor(rule_match="equals", rule_missing="raise")
     .write_docx(
-        file_template=Path("template.docx"),
         file_out_docx=Path("report.docx"),
-        context={"report_title": "Example Report"},
-        markdown_body="# Summary\n\nBody text.",
+        markdown_body="# Summary **Bold**\n\nBody text with [link](https://example.com).",
         dir_base=Path("."),
     )
 )
@@ -168,6 +226,15 @@ print(result.file_docx)
 `markdown_body` is the already-rendered Markdown body to insert into the DOCX
 template. `dir_base` is the base directory used to resolve relative image paths
 inside that Markdown body.
+
+`DocxMarkdownOptions` only covers the shared CommonMark-ish subset. Product
+repositories should keep custom markdown dialects outside `docxrender`, either
+through caller-side preprocessing or explicit higher-level options in their own
+repo.
+
+`DocxBodyRenderPolicy` controls structural rendering choices such as heading
+numbering, Word-style versus plain-text lists, and striped table body rows. It
+does not classify product-specific paragraphs.
 
 `DocxBodyAnchorOptions` controls where the Markdown body is inserted. The search
 is limited to top-level body paragraphs in the DOCX main document. `equals`
@@ -188,6 +255,26 @@ DocxRenderer(file_docx=Path("report.docx")).with_field_refresh(
     dir_user_profile=Path("tmp/lo-profile"),
     should_require_toc=True,
 ).write_docx()
+```
+
+Generic `docxtpl` inline-image binding is also supported through the same
+template entrypoint:
+
+```python
+from pathlib import Path
+
+from docxrender import DocxRenderer, DocxTemplateImageSpec
+
+renderer = DocxRenderer().with_template(
+    file_template=Path("template.docx"),
+    context={"report_title": "Example Report"},
+    inline_images={
+        "cover_image": DocxTemplateImageSpec(
+            file_image=Path("cover.png"),
+            width_mm=120,
+        ),
+    },
+)
 ```
 
 The same renderer can convert the current DOCX to PDF:

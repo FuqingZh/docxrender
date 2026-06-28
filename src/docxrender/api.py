@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Any, cast
 
 from docx import Document
-from docxtpl import DocxTemplate
 
 from docxrender.contracts import (
     DocxFieldRefreshOptions,
     DocxHeaderFooterImageOptions,
+    DocxTemplateRenderOptions,
     DocxToPdfOptions,
     DocxToPdfResult,
     DocxWriteOptions,
@@ -23,6 +22,7 @@ from docxrender.docx.fields import (
 )
 from docxrender.docx.refresh import refresh_docx_fields
 from docxrender.markdown import parse_markdown_blocks
+from docxrender.template import write_docx_template
 
 
 def write_docx(options: DocxWriteOptions) -> DocxWriteResult:
@@ -39,8 +39,20 @@ def write_docx(options: DocxWriteOptions) -> DocxWriteResult:
         RuntimeError: The rendered DOCX cannot be opened or written.
     """
 
-    _write_template_docx(options)
-    markdown_blocks = parse_markdown_blocks(options.markdown_body)
+    write_docx_template(
+        DocxTemplateRenderOptions(
+            file_template=options.file_template,
+            file_out_docx=options.file_out_docx,
+            context=options.context,
+            context_defaults={"body_anchor": options.body_anchor.anchor_token},
+            inline_images=options.template_inline_images,
+            context_policy=options.template_context_policy,
+        )
+    )
+    markdown_blocks = parse_markdown_blocks(
+        options.markdown_body,
+        options=options.markdown,
+    )
     document = Document(str(options.file_out_docx))
     insert_markdown_blocks(
         document,
@@ -48,6 +60,7 @@ def write_docx(options: DocxWriteOptions) -> DocxWriteResult:
         body_anchor=options.body_anchor,
         dir_base=options.dir_base,
         style=options.style,
+        body_render_policy=options.body_render_policy,
     )
     document.save(str(options.file_out_docx))
     postprocess_docx(
@@ -118,15 +131,6 @@ def convert_docx_to_pdf(options: DocxToPdfOptions) -> DocxToPdfResult:
     from docxrender.pdf_uno import run_docx_to_pdf_pipeline
 
     return run_docx_to_pdf_pipeline(options)
-
-
-def _write_template_docx(options: DocxWriteOptions) -> None:
-    options.file_out_docx.parent.mkdir(parents=True, exist_ok=True)
-    template = cast(Any, DocxTemplate(str(options.file_template)))
-    context = dict(options.context)
-    context.setdefault("body_anchor", options.body_anchor.anchor_token)
-    template.render(context)
-    template.save(str(options.file_out_docx))
 
 
 def postprocess_docx(
