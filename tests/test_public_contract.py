@@ -1008,7 +1008,8 @@ class TestPublicContract:
 
             result = write_docx(options_docx)
             document = Document(str(result.file_docx))
-            texts = [paragraph.text for paragraph in document.paragraphs]
+            paragraphs = document.paragraphs
+            texts = [paragraph.text for paragraph in paragraphs]
 
             assert result.file_docx == file_out_docx
             assert "Contract Report" in texts
@@ -1026,9 +1027,7 @@ class TestPublicContract:
             assert document.tables[0].cell(0, 0).text == "A"
             assert document.tables[0].cell(1, 1).text == "2"
             assert len(document.inline_shapes) == 1
-            paragraph_by_text = {
-                paragraph.text: paragraph for paragraph in document.paragraphs
-            }
+            paragraph_by_text = {paragraph.text: paragraph for paragraph in paragraphs}
             assert (
                 _run_font_size_pt(_first_text_run(paragraph_by_text["Heading Bold"]))
                 == 16.0
@@ -1066,7 +1065,17 @@ class TestPublicContract:
                 4.56,
                 abs=0.02,
             )
-            assert 'w:val="single"' in cast(Any, document.tables[0].cell(0, 0))._tc.xml
+            paragraph_caption = paragraph_by_text["Example image"]
+            idx_caption = paragraphs.index(paragraph_caption)
+            assert paragraphs[idx_caption - 1].alignment == 1
+            table_markdown = document.tables[0]
+            table_xml = cast(Any, table_markdown)._tbl.xml
+            assert table_markdown.autofit is True
+            assert '<w:tblLayout w:type="autofit"/>' in table_xml
+            assert "<w:tblGrid>" in table_xml
+            assert "<w:gridCol w:w=" not in table_xml
+            assert "<w:tcW " not in table_xml
+            assert 'w:val="single"' in cast(Any, table_markdown.cell(0, 0))._tc.xml
 
     def test_write_docx_body_render_policy_controls_structural_rendering(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -1107,7 +1116,8 @@ class TestPublicContract:
             )
 
             document = Document(str(file_out_docx))
-            texts = [paragraph.text for paragraph in document.paragraphs]
+            paragraphs = document.paragraphs
+            texts = [paragraph.text for paragraph in paragraphs]
             assert "1. Heading" in texts
             assert "1.1 Child" in texts
             assert "9. Existing" in texts
@@ -1131,9 +1141,11 @@ class TestPublicContract:
             )
             paragraph_caption = next(
                 paragraph
-                for paragraph in document.paragraphs
+                for paragraph in paragraphs
                 if paragraph.text == "Caption"
             )
+            idx_caption = paragraphs.index(paragraph_caption)
+            assert paragraphs[idx_caption - 1].alignment == 1
             assert paragraph_caption.alignment == 1
             paragraph_caption_format = cast(Any, paragraph_caption.paragraph_format)
             assert paragraph_caption_format.first_line_indent is None

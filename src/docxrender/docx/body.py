@@ -239,6 +239,7 @@ def _insert_block_before_anchor(
             _insert_table_before_anchor(anchor, table)
         case MarkdownImage(path=path, caption=caption, width_pct=width_pct):
             paragraph_image = anchor.insert_paragraph_before()
+            paragraph_image.alignment = WD_ALIGN_PARAGRAPH.CENTER
             _add_picture(paragraph_image, dir_base / path, width_pct=width_pct)
             if caption:
                 paragraph_caption = anchor.insert_paragraph_before()
@@ -435,6 +436,7 @@ def _append_table(
     count_cols = max(len(row) for row in rows)
     table = document.add_table(rows=len(rows), cols=count_cols)
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
+    _apply_content_autofit_table_layout(table)
     _apply_three_line_table_borders(table, style=style)
     if policy.should_stripe_table_rows:
         _apply_table_body_stripes(table, style=style)
@@ -468,6 +470,7 @@ def _append_image(
     style: DocxStyle,
 ) -> None:
     paragraph = document.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _add_picture(paragraph, path_image, width_pct=width_pct)
     if caption:
         paragraph_caption = document.add_paragraph()
@@ -483,6 +486,29 @@ def _append_image(
 def _add_picture(paragraph: Paragraph, path_image: Path, *, width_pct: float) -> None:
     width_inches = 6.0 * max(0.1, min(width_pct / 100.0, 1.0))
     paragraph.add_run().add_picture(str(path_image), width=Inches(width_inches))
+
+
+def _apply_content_autofit_table_layout(table: Table) -> None:
+    table.autofit = True
+    table_element = cast(Any, table)._tbl
+    tbl_pr = table_element.tblPr
+    tbl_layout: Any = tbl_pr.first_child_found_in("w:tblLayout")
+    if tbl_layout is None:
+        tbl_layout = cast(Any, OxmlElement("w:tblLayout"))
+        tbl_pr.append(tbl_layout)
+    tbl_layout.set(qn("w:type"), "autofit")
+    tbl_width: Any = tbl_pr.first_child_found_in("w:tblW")
+    if tbl_width is not None:
+        tbl_width.set(qn("w:type"), "auto")
+        tbl_width.set(qn("w:w"), "0")
+    for grid_col in table_element.tblGrid.gridCol_lst:
+        if qn("w:w") in grid_col.attrib:
+            del grid_col.attrib[qn("w:w")]
+    for cell in table_element.iter_tcs():
+        tc_pr = cell.get_or_add_tcPr()
+        tc_width: Any = tc_pr.first_child_found_in("w:tcW")
+        if tc_width is not None:
+            tc_pr.remove(tc_width)
 
 
 def _insert_table_before_anchor(anchor: Paragraph, table: Table) -> None:
