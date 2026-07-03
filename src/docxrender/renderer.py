@@ -48,6 +48,8 @@ class _PdfConversionSettings:
     file_listener_log: Path | None = None
     should_update_fields: bool | None = None
     should_freeze_fields: bool | None = None
+    backend: Literal["auto", "in_process", "subprocess"] | None = None
+    exe_python_uno: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -478,6 +480,8 @@ class DocxRenderer:
         file_listener_log: Path | None = None,
         should_update_fields: bool | None = None,
         should_freeze_fields: bool | None = None,
+        backend: Literal["auto", "in_process", "subprocess"] | None = None,
+        exe_python_uno: Path | None = None,
     ) -> DocxRenderer:
         if options is not None:
             return self._replace_state(
@@ -490,6 +494,8 @@ class DocxRenderer:
                     file_listener_log=options.file_listener_log,
                     should_update_fields=options.should_update_fields,
                     should_freeze_fields=options.should_freeze_fields,
+                    backend=options.backend,
+                    exe_python_uno=options.exe_python_uno,
                 ),
                 file_docx=options.file_in_docx,
             )
@@ -508,6 +514,8 @@ class DocxRenderer:
                 file_listener_log=file_listener_log,
                 should_update_fields=should_update_fields,
                 should_freeze_fields=should_freeze_fields,
+                backend=backend,
+                exe_python_uno=exe_python_uno,
             ),
             file_docx=(
                 file_in_docx if file_in_docx is not None else self._state.file_docx
@@ -676,6 +684,8 @@ class DocxRenderer:
         file_listener_log: Path | None = None,
         should_update_fields: bool | None = None,
         should_freeze_fields: bool | None = None,
+        backend: Literal["auto", "in_process", "subprocess"] | None = None,
+        exe_python_uno: Path | None = None,
     ) -> DocxToPdfResult:
         file_docx_effective = self._state.file_docx
         if file_docx_effective is None:
@@ -699,6 +709,8 @@ class DocxRenderer:
                 file_listener_log=file_listener_log,
                 should_update_fields=should_update_fields,
                 should_freeze_fields=should_freeze_fields,
+                backend=backend,
+                exe_python_uno=exe_python_uno,
             )
         )
 
@@ -737,6 +749,8 @@ class DocxRenderer:
         file_listener_log: Path | None = None,
         should_update_fields: bool | None = None,
         should_freeze_fields: bool | None = None,
+        backend: Literal["auto", "in_process", "subprocess"] | None = None,
+        exe_python_uno: Path | None = None,
     ) -> DocxToPdfOptions:
         settings = self._state.pdf_settings
         exe_effective = exe_libreoffice or (
@@ -785,5 +799,19 @@ class DocxRenderer:
                 else settings.should_freeze_fields
                 if settings is not None and settings.should_freeze_fields is not None
                 else self._state.field_markers.should_freeze_fields
+            ),
+            backend=(
+                backend
+                if backend is not None
+                else settings.backend
+                if settings is not None and settings.backend is not None
+                else "auto"
+            ),
+            exe_python_uno=(
+                exe_python_uno
+                if exe_python_uno is not None
+                else settings.exe_python_uno
+                if settings is not None
+                else None
             ),
         )

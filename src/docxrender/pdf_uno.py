@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import json
+import os
 import shutil
 import socket
 import subprocess
@@ -11,7 +13,7 @@ import time
 from dataclasses import dataclass
 from io import BufferedWriter
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from docxrender.contracts import (
     DocxFieldRefreshOptions,
@@ -97,8 +99,38 @@ class DocxToPdfState:
 def run_docx_to_pdf_pipeline(options: DocxToPdfOptions) -> DocxToPdfResult:
     state = create_docx_to_pdf_state(options)
     validate_docx_input(state)
+    backend = resolve_pdf_backend(options)
+    if backend == "subprocess":
+        convert_docx_to_pdf_with_subprocess(state)
+        return create_docx_to_pdf_result(state)
     convert_docx_to_pdf_with_uno(state)
     return create_docx_to_pdf_result(state)
+
+
+def resolve_pdf_backend(options: DocxToPdfOptions) -> str:
+    if options.backend not in ("auto", "in_process", "subprocess"):
+        raise ValueError(f"Unsupported DOCX-to-PDF backend: {options.backend!r}")
+    if options.backend == "in_process":
+        return "in_process"
+    if options.backend == "subprocess":
+        if options.exe_python_uno is None:
+            raise ValueError(
+                "exe_python_uno is required when backend='subprocess'."
+            )
+        return "subprocess"
+    if can_import_uno_module():
+        return "in_process"
+    if options.exe_python_uno is not None:
+        return "subprocess"
+    return "in_process"
+
+
+def can_import_uno_module() -> bool:
+    try:
+        importlib.import_module("uno")
+    except ImportError:
+        return False
+    return True
 
 
 def create_docx_to_pdf_state(options: DocxToPdfOptions) -> DocxToPdfState:
@@ -125,6 +157,129 @@ def create_docx_to_pdf_result(state: DocxToPdfState) -> DocxToPdfResult:
         file_pdf=state.options.file_out_pdf,
         file_docx_refreshed=state.options.file_out_docx_refreshed,
     )
+
+
+def convert_docx_to_pdf_with_subprocess(state: DocxToPdfState) -> DocxToPdfState:
+    options = state.options
+    if options.exe_python_uno is None:
+        raise ValueError("exe_python_uno is required when backend='subprocess'.")
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".json",
+        prefix="docxrender-pdf-options-",
+        encoding="utf-8",
+        delete=False,
+    ) as file_options:
+        path_options = Path(file_options.name)
+        json.dump(serialize_docx_to_pdf_options(options), file_options)
+
+    try:
+        command = [
+            str(options.exe_python_uno),
+            "-m",
+            "docxrender.pdf_uno_worker",
+            "--options-json",
+            str(path_options),
+        ]
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=create_subprocess_uno_environment(),
+        )
+    finally:
+        path_options.unlink(missing_ok=True)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            "\n".join(
+                [
+                    "error_code=libreoffice_uno_subprocess_failed",
+                    "backend=subprocess",
+                    f"exe_python_uno={options.exe_python_uno.resolve()}",
+                    f"exe_libreoffice={options.exe_libreoffice.resolve()}",
+                    f"file_in_docx={options.file_in_docx.resolve()}",
+                    f"file_out_pdf={options.file_out_pdf.resolve()}",
+                    f"listener_log={listener_log_label(options.file_listener_log)}",
+                    f"returncode={result.returncode}",
+                    f"stdout_tail={format_log_field(result.stdout[-4000:])}",
+                    f"stderr_tail={format_log_field(result.stderr[-4000:])}",
+                ]
+            )
+        )
+    return state
+
+
+def serialize_docx_to_pdf_options(options: DocxToPdfOptions) -> dict[str, object]:
+    return {
+        "exe_libreoffice": str(options.exe_libreoffice),
+        "file_in_docx": str(options.file_in_docx),
+        "file_out_pdf": str(options.file_out_pdf),
+        "dir_user_profile": str(options.dir_user_profile),
+        "file_out_docx_refreshed": (
+            str(options.file_out_docx_refreshed)
+            if options.file_out_docx_refreshed is not None
+            else None
+        ),
+        "file_listener_log": (
+            str(options.file_listener_log)
+            if options.file_listener_log is not None
+            else None
+        ),
+        "should_update_fields": options.should_update_fields,
+        "should_freeze_fields": options.should_freeze_fields,
+        "backend": "in_process",
+        "exe_python_uno": None,
+    }
+
+
+def deserialize_docx_to_pdf_options(payload: dict[str, object]) -> DocxToPdfOptions:
+    return DocxToPdfOptions(
+        exe_libreoffice=Path(str(payload["exe_libreoffice"])),
+        file_in_docx=Path(str(payload["file_in_docx"])),
+        file_out_pdf=Path(str(payload["file_out_pdf"])),
+        dir_user_profile=Path(str(payload["dir_user_profile"])),
+        file_out_docx_refreshed=(
+            Path(str(payload["file_out_docx_refreshed"]))
+            if payload.get("file_out_docx_refreshed") is not None
+            else None
+        ),
+        file_listener_log=(
+            Path(str(payload["file_listener_log"]))
+            if payload.get("file_listener_log") is not None
+            else None
+        ),
+        should_update_fields=bool(payload.get("should_update_fields", True)),
+        should_freeze_fields=bool(payload.get("should_freeze_fields", False)),
+        backend=parse_pdf_backend_value(payload.get("backend", "in_process")),
+        exe_python_uno=(
+            Path(str(payload["exe_python_uno"]))
+            if payload.get("exe_python_uno") is not None
+            else None
+        ),
+    )
+
+
+def parse_pdf_backend_value(
+    value: object,
+) -> Literal["auto", "in_process", "subprocess"]:
+    if value in ("auto", "in_process", "subprocess"):
+        return value
+    raise ValueError(f"Unsupported DOCX-to-PDF backend: {value!r}")
+
+
+def create_subprocess_uno_environment() -> dict[str, str]:
+    env = dict(os.environ)
+    path_package_parent = str(Path(__file__).resolve().parents[1])
+    pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        path_package_parent
+        if not pythonpath
+        else f"{path_package_parent}{os.pathsep}{pythonpath}"
+    )
+    return env
 
 
 def create_libreoffice_listener_command(

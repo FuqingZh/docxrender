@@ -213,6 +213,8 @@ class TestPublicContract:
             assert options.file_listener_log is None
             assert options.should_update_fields is True
             assert options.should_freeze_fields is False
+            assert options.backend == "auto"
+            assert options.exe_python_uno is None
 
     def test_docx_markdown_options_default_to_commonmarkish_subset(self) -> None:
         options = DocxMarkdownOptions()
@@ -822,12 +824,16 @@ class TestPublicContract:
                         exe_libreoffice=Path("/usr/bin/libreoffice"),
                         dir_user_profile=path_tmp / "lo-profile",
                         file_out_pdf=file_pdf,
+                        backend="subprocess",
+                        exe_python_uno=Path("/usr/bin/python3"),
                     )
                     .write_pdf()
                 )
 
             assert result.file_pdf == file_pdf
             assert captured_options[0].file_in_docx == file_docx
+            assert captured_options[0].backend == "subprocess"
+            assert captured_options[0].exe_python_uno == Path("/usr/bin/python3")
 
     def test_docx_renderer_pdf_options_use_field_marker_state(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -847,6 +853,28 @@ class TestPublicContract:
             assert options is not None
             assert options.should_update_fields is False
             assert options.should_freeze_fields is False
+            assert options.backend == "auto"
+            assert options.exe_python_uno is None
+
+    def test_docx_renderer_pdf_options_preserve_subprocess_backend(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_docx = path_tmp / "report.docx"
+            options = (
+                DocxRenderer(file_docx=file_docx)
+                .with_pdf_conversion(
+                    exe_libreoffice=Path("/usr/bin/libreoffice"),
+                    dir_user_profile=path_tmp / "lo-profile",
+                    file_out_pdf=path_tmp / "report.pdf",
+                    backend="subprocess",
+                    exe_python_uno=Path("/usr/bin/python3"),
+                )
+                .pdf_options
+            )
+
+            assert options is not None
+            assert options.backend == "subprocess"
+            assert options.exe_python_uno == Path("/usr/bin/python3")
 
     def test_docx_renderer_does_not_expose_convert_docx_to_pdf(self) -> None:
         assert not hasattr(DocxRenderer(), "convert_docx_to_pdf")
@@ -963,6 +991,8 @@ class TestPublicContract:
                     exe_libreoffice=Path("/usr/bin/libreoffice"),
                     dir_user_profile=path_tmp / "lo-profile",
                     file_out_pdf=file_pdf,
+                    backend="subprocess",
+                    exe_python_uno=Path("/usr/bin/python3"),
                 )
                 result = renderer.write_pdf(
                     file_template=file_template,
@@ -975,6 +1005,8 @@ class TestPublicContract:
             assert result.file_pdf == file_pdf
             assert renderer.file_docx is None
             assert captured_options[0].file_in_docx == file_docx
+            assert captured_options[0].backend == "subprocess"
+            assert captured_options[0].exe_python_uno == Path("/usr/bin/python3")
 
     def test_write_docx_creates_minimal_document(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:
@@ -1674,6 +1706,270 @@ class TestPublicContract:
             assert "--headless" in command
             assert "--accept=socket,host=127.0.0.1,port=23001;urp;" in command
             assert command[-1].startswith("-env:UserInstallation=file://")
+
+    def test_convert_docx_to_pdf_in_process_backend_uses_uno_core(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            options_pdf = DocxToPdfOptions(
+                exe_libreoffice=Path("/usr/bin/libreoffice"),
+                file_in_docx=file_in_docx,
+                file_out_pdf=path_tmp / "report.pdf",
+                dir_user_profile=path_tmp / "lo-profile",
+                backend="in_process",
+            )
+
+            from docxrender import pdf_uno
+
+            with mock.patch.object(
+                pdf_uno,
+                "convert_docx_to_pdf_with_uno",
+                return_value=None,
+            ) as convert_with_uno:
+                result = convert_docx_to_pdf(options_pdf)
+
+            assert result.file_pdf == options_pdf.file_out_pdf
+            convert_with_uno.assert_called_once()
+
+    def test_convert_docx_to_pdf_subprocess_backend_requires_python(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            options_pdf = DocxToPdfOptions(
+                exe_libreoffice=Path("/usr/bin/libreoffice"),
+                file_in_docx=file_in_docx,
+                file_out_pdf=path_tmp / "report.pdf",
+                dir_user_profile=path_tmp / "lo-profile",
+                backend="subprocess",
+            )
+
+            with pytest.raises(ValueError, match="exe_python_uno"):
+                convert_docx_to_pdf(options_pdf)
+
+    def test_convert_docx_to_pdf_subprocess_backend_runs_worker(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            options_pdf = DocxToPdfOptions(
+                exe_libreoffice=Path("/usr/bin/libreoffice"),
+                file_in_docx=file_in_docx,
+                file_out_pdf=path_tmp / "report.pdf",
+                dir_user_profile=path_tmp / "lo-profile",
+                file_out_docx_refreshed=path_tmp / "report-refreshed.docx",
+                file_listener_log=path_tmp / "listener.log",
+                should_update_fields=False,
+                should_freeze_fields=True,
+                backend="subprocess",
+                exe_python_uno=Path("/usr/bin/python3"),
+            )
+
+            from docxrender import pdf_uno
+
+            calls: list[list[str]] = []
+
+            def fake_run(command: list[str], **kwargs: object) -> object:
+                calls.append(command)
+                return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+            with mock.patch.object(
+                pdf_uno.subprocess,
+                "run",
+                side_effect=fake_run,
+            ):
+                result = convert_docx_to_pdf(options_pdf)
+
+            assert result.file_pdf == options_pdf.file_out_pdf
+            assert calls[0][:3] == [
+                "/usr/bin/python3",
+                "-m",
+                "docxrender.pdf_uno_worker",
+            ]
+            assert "--options-json" in calls[0]
+
+    def test_convert_docx_to_pdf_subprocess_backend_wraps_worker_failure(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            options_pdf = DocxToPdfOptions(
+                exe_libreoffice=Path("/usr/bin/libreoffice"),
+                file_in_docx=file_in_docx,
+                file_out_pdf=path_tmp / "report.pdf",
+                dir_user_profile=path_tmp / "lo-profile",
+                file_listener_log=path_tmp / "listener.log",
+                backend="subprocess",
+                exe_python_uno=Path("/usr/bin/python3"),
+            )
+
+            from docxrender import pdf_uno
+
+            with (
+                mock.patch.object(
+                    pdf_uno.subprocess,
+                    "run",
+                    return_value=types.SimpleNamespace(
+                        returncode=2,
+                        stdout="worker stdout",
+                        stderr="worker stderr",
+                    ),
+                ),
+                pytest.raises(RuntimeError) as ctx,
+            ):
+                convert_docx_to_pdf(options_pdf)
+
+            text_error = str(ctx.value)
+            assert "error_code=libreoffice_uno_subprocess_failed" in text_error
+            assert "backend=subprocess" in text_error
+            assert "exe_python_uno=" in text_error
+            assert "worker stderr" in text_error
+
+    def test_convert_docx_to_pdf_auto_backend_prefers_in_process_when_uno_imports(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            options_pdf = DocxToPdfOptions(
+                exe_libreoffice=Path("/usr/bin/libreoffice"),
+                file_in_docx=file_in_docx,
+                file_out_pdf=path_tmp / "report.pdf",
+                dir_user_profile=path_tmp / "lo-profile",
+                backend="auto",
+                exe_python_uno=Path("/usr/bin/python3"),
+            )
+
+            from docxrender import pdf_uno
+
+            with (
+                mock.patch.object(pdf_uno, "can_import_uno_module", return_value=True),
+                mock.patch.object(
+                    pdf_uno,
+                    "convert_docx_to_pdf_with_uno",
+                    return_value=None,
+                ) as convert_with_uno,
+                mock.patch.object(pdf_uno.subprocess, "run") as run_subprocess,
+            ):
+                convert_docx_to_pdf(options_pdf)
+
+            convert_with_uno.assert_called_once()
+            run_subprocess.assert_not_called()
+
+    def test_convert_docx_to_pdf_auto_backend_falls_back_to_subprocess(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            options_pdf = DocxToPdfOptions(
+                exe_libreoffice=Path("/usr/bin/libreoffice"),
+                file_in_docx=file_in_docx,
+                file_out_pdf=path_tmp / "report.pdf",
+                dir_user_profile=path_tmp / "lo-profile",
+                backend="auto",
+                exe_python_uno=Path("/usr/bin/python3"),
+            )
+
+            from docxrender import pdf_uno
+
+            with (
+                mock.patch.object(pdf_uno, "can_import_uno_module", return_value=False),
+                mock.patch.object(
+                    pdf_uno.subprocess,
+                    "run",
+                    return_value=types.SimpleNamespace(
+                        returncode=0,
+                        stdout="",
+                        stderr="",
+                    ),
+                ) as run_subprocess,
+            ):
+                convert_docx_to_pdf(options_pdf)
+
+            run_subprocess.assert_called_once()
+
+    def test_convert_docx_to_pdf_auto_backend_keeps_import_guidance_without_python(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            options_pdf = DocxToPdfOptions(
+                exe_libreoffice=Path("/usr/bin/libreoffice"),
+                file_in_docx=file_in_docx,
+                file_out_pdf=path_tmp / "report.pdf",
+                dir_user_profile=path_tmp / "lo-profile",
+                should_update_fields=False,
+                backend="auto",
+            )
+
+            from docxrender import pdf_uno
+
+            with (
+                mock.patch.object(pdf_uno, "can_import_uno_module", return_value=False),
+                mock.patch.object(
+                    pdf_uno,
+                    "import_uno_module",
+                    side_effect=RuntimeError("libreoffice_uno_import_failed"),
+                ),
+                pytest.raises(RuntimeError, match="libreoffice_uno_import_failed"),
+            ):
+                convert_docx_to_pdf(options_pdf)
+
+    def test_pdf_uno_worker_calls_shared_uno_core(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="docxrender_pdf_worker_") as dir_tmp:
+            path_tmp = Path(dir_tmp)
+            file_in_docx = path_tmp / "report.docx"
+            file_in_docx.write_bytes(b"docx payload")
+            file_options = path_tmp / "options.json"
+            file_options.write_text(
+                (
+                    "{"
+                    f'"exe_libreoffice": "{Path("/usr/bin/libreoffice")}",'
+                    f'"file_in_docx": "{file_in_docx}",'
+                    f'"file_out_pdf": "{path_tmp / "report.pdf"}",'
+                    f'"dir_user_profile": "{path_tmp / "lo-profile"}",'
+                    '"file_out_docx_refreshed": null,'
+                    '"file_listener_log": null,'
+                    '"should_update_fields": false,'
+                    '"should_freeze_fields": false,'
+                    '"backend": "in_process",'
+                    '"exe_python_uno": null'
+                    "}"
+                ),
+                encoding="utf-8",
+            )
+
+            from docxrender import pdf_uno_worker
+
+            with mock.patch.object(
+                pdf_uno_worker,
+                "convert_docx_to_pdf_with_uno",
+                return_value=None,
+            ) as convert_with_uno:
+                pdf_uno_worker.run_options_file(file_options)
+
+            convert_with_uno.assert_called_once()
+
+    def test_pdf_uno_worker_main_returns_nonzero_on_failure(self) -> None:
+        from docxrender import pdf_uno_worker
+
+        with (
+            mock.patch.object(
+                pdf_uno_worker,
+                "create_parser",
+                return_value=types.SimpleNamespace(
+                    parse_args=lambda: types.SimpleNamespace(
+                        options_json=Path("/tmp/missing-options.json")
+                    )
+                ),
+            ),
+            mock.patch("sys.stderr"),
+        ):
+            assert pdf_uno_worker.main() == 1
 
     def test_convert_docx_to_pdf_stages_input_before_load(self) -> None:
         with tempfile.TemporaryDirectory(prefix="docxrender_contract_") as dir_tmp:

@@ -600,6 +600,8 @@ class DocxToPdfOptions:
             update before LibreOffice loads the document.
         should_freeze_fields (bool): Whether refreshed field results should be frozen
             in `file_out_docx_refreshed` when that output is requested.
+        backend (Literal["auto", "in_process", "subprocess"]): UNO runtime backend.
+        exe_python_uno (Path | None): Python executable used by subprocess backend.
     """
 
     exe_libreoffice: Path
@@ -610,6 +612,8 @@ class DocxToPdfOptions:
     file_listener_log: Path | None = None
     should_update_fields: bool = True
     should_freeze_fields: bool = False
+    backend: Literal["auto", "in_process", "subprocess"] = "auto"
+    exe_python_uno: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
