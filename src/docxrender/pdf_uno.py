@@ -535,8 +535,9 @@ def wait_for_listener(port: int, *, file_listener_log: Path | None = None) -> No
 
 
 def create_property(name: str, value: object) -> Any:
-    module_beans = importlib.import_module("com.sun.star.beans")
-    prop = module_beans.PropertyValue()
+    from com.sun.star.beans import PropertyValue
+
+    prop = PropertyValue()
     prop.Name = name
     prop.Value = value
     return prop
