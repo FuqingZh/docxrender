@@ -501,9 +501,6 @@ def _apply_content_autofit_table_layout(table: Table) -> None:
     if tbl_width is not None:
         tbl_width.set(qn("w:type"), "auto")
         tbl_width.set(qn("w:w"), "0")
-    for grid_col in table_element.tblGrid.gridCol_lst:
-        if qn("w:w") in grid_col.attrib:
-            del grid_col.attrib[qn("w:w")]
     for cell in table_element.iter_tcs():
         tc_pr = cell.get_or_add_tcPr()
         tc_width: Any = tc_pr.first_child_found_in("w:tcW")

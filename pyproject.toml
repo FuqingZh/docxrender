@@ -1,6 +1,6 @@
 [project]
 name = "docxrender"
-version = "0.1.4"
+version = "0.1.5"
 description = "Minimal DOCX rendering core for template, markdown, field refresh, and PDF conversion workflows"
 authors = [
     {name = "FuqingZhang", email = "fuqin.zhang@proton.me"},
@@ -12,6 +12,12 @@ dependencies = [
 requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "MIT"}
+
+[project.urls]
+Homepage = "https://github.com/FuqingZh/docxrender"
+Repository = "https://github.com/FuqingZh/docxrender"
+Issues = "https://github.com/FuqingZh/docxrender/issues"
+Changelog = "https://github.com/FuqingZh/docxrender/releases"
 
 [build-system]
 requires = ["pdm-backend"]

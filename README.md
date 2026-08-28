@@ -60,6 +60,16 @@ sudo apt install libreoffice python3-uno
 Base DOCX writing with `field_refresh=None` does not import UNO and works
 without LibreOffice.
 
+To run the real LibreOffice table-import compatibility probe locally:
+
+```bash
+DOCXRENDER_TEST_LIBREOFFICE=1 pdm run pytest \
+  tests/test_libreoffice_compatibility.py -q
+```
+
+The probe requires a host LibreOffice installation. The default test suite
+still verifies that rendered table-grid columns retain positive widths.
+
 ## Public API
 
 The stable public API is exported from the package root. Product repositories
@@ -408,3 +418,14 @@ Pyright remains the primary type gate.
 The suite currently covers public API construction, minimal DOCX writing,
 markdown body insertion, basic style application, and the boundary that
 `docxrender` does not import product repositories.
+
+## Release
+
+Package publication is driven by an intentionally published GitHub Release,
+not by a tag push. A release tag remains the immutable package-version identity
+and must exactly match the canonical PEP 440 version in `pyproject.toml`.
+
+The release workflow checks the source, builds one wheel and one sdist, verifies
+their embedded identities, rebuilds and installs a wheel from the sdist, and
+publishes the verified artifacts to PyPI with trusted publishing. It does not
+use repository API tokens, `skip-existing`, or automatic TestPyPI publication.

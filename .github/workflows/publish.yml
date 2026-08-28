@@ -1,156 +1,117 @@
 name: py-publish
 
 on:
-  push:
-    tags:
-      - "*.*.*"
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 concurrency:
-  group: py-publish-${{ github.ref }}
+  group: py-publish-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
-  build-dist:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       PDM_IGNORE_SAVED_PYTHON: "1"
       PDM_VENV_IN_PROJECT: "1"
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/setup-python@v5
+      - name: Fetch release branch authority
+        run: git fetch origin main:refs/remotes/origin/main
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
 
       - name: Install tooling
-        run: python -m pip install -U pip pdm packaging
-
-      - name: Verify tag is canonical PEP 440
-        if: github.ref_type == 'tag'
-        run: |
-          python - <<'PY'
-          from packaging.version import InvalidVersion, Version
-
-          raw_tag = "${{ github.ref_name }}"
-
-          if raw_tag.startswith("v") or raw_tag.startswith("py-v"):
-              raise SystemExit(
-                  "Tag must be plain PEP 440 version "
-                  f"(e.g. 0.1.0), got {raw_tag!r}."
-              )
-
-          try:
-              parsed = Version(raw_tag)
-          except InvalidVersion as exc:
-              raise SystemExit(f"Invalid PEP 440 tag: {raw_tag!r}") from exc
-
-          if str(parsed) != raw_tag:
-              raise SystemExit(
-                  "Tag must already be canonical PEP 440, "
-                  f"got {raw_tag!r}, canonical={str(parsed)!r}."
-              )
-
-          print(f"Tag check passed: {raw_tag}")
-          PY
+        run: python -m pip install -U pip pdm packaging twine
 
       - name: Install dependencies
         run: pdm sync -G dev
 
-      - name: Lint
-        run: pdm run ruff check .
-
-      - name: Type check
-        run: pdm run pyright
-
-      - name: Type check advisory
-        continue-on-error: true
-        run: pdm run ty check .
-
-      - name: Unit tests
-        run: pdm run python -m pytest -v
-
-      - name: Clean local packaging artifacts
+      - name: Run code checks
         run: |
-          rm -rf __pypackages__ .pdm-build .pytest_cache .ruff_cache dist build
+          pdm run ruff check .
+          pdm run pyright
+          pdm run python -m pytest -v
 
-      - name: Build package artifacts
+      - name: Build distributions
         run: pdm build
+
+      - name: Verify release identity and artifacts
+        run: >-
+          pdm run python scripts/verify_release.py
+          --tag "${RELEASE_TAG}"
+          --expected-commit "${GITHUB_SHA}"
+          --dist dist
 
       - name: Check package metadata
         run: pdm run twine check dist/*
 
-      - name: Verify built package can be installed
+      - name: Rebuild wheel from sdist
         run: |
-          python -m venv /tmp/docxrender-wheel-venv
-          /tmp/docxrender-wheel-venv/bin/python -m pip install -U pip
-          /tmp/docxrender-wheel-venv/bin/python -m pip install dist/*.whl
-          /tmp/docxrender-wheel-venv/bin/python - <<'PY'
+          mkdir -p build/sdist-wheel
+          python -m pip wheel --no-deps --wheel-dir build/sdist-wheel dist/*.tar.gz
+
+      - name: Verify wheels install and import
+        run: |
+          python -m venv build/wheel-smoke
+          build/wheel-smoke/bin/python -m pip install -U pip
+          build/wheel-smoke/bin/python -m pip install dist/*.whl
+          build/wheel-smoke/bin/python - <<'PY'
+          from importlib.metadata import version
           from docxrender import DocxRenderer, convert_docx_to_pdf, write_docx
 
+          assert version("docxrender") == "${{ github.event.release.tag_name }}"
           assert DocxRenderer().style.sizes.pt_body == 12.0
           assert callable(write_docx)
           assert callable(convert_docx_to_pdf)
-          print("docxrender wheel import ok")
+          PY
+          build/wheel-smoke/bin/python -m pip install --force-reinstall --no-deps build/sdist-wheel/*.whl
+          build/wheel-smoke/bin/python - <<'PY'
+          from importlib.metadata import version
+          from docxrender import DocxRenderer
+
+          assert version("docxrender") == "${{ github.event.release.tag_name }}"
+          assert DocxRenderer().style.sizes.pt_body == 12.0
           PY
 
-      - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+      - name: Retain verified artifacts for publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: py-dist-main
-          path: dist/
+          name: docxrender-${{ github.event.release.tag_name }}
+          path: dist/*
           if-no-files-found: error
+          retention-days: 1
 
-  publish-testpypi:
-    needs: build-dist
+  publish:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: read
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/docxrender
-    steps:
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: py-dist-main
-          path: dist
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@v1.13.0
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          packages-dir: dist
-          skip-existing: true
-          attestations: false
-          verbose: true
-
-  publish-pypi:
-    needs: build-dist
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     environment:
       name: pypi
       url: https://pypi.org/p/docxrender
     steps:
-      - name: Download dist
-        uses: actions/download-artifact@v4
+      - name: Download verified artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: py-dist-main
+          name: docxrender-${{ github.event.release.tag_name }}
           path: dist
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.13.0
+      - name: Publish to PyPI with trusted publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist
-          skip-existing: true

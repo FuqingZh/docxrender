@@ -1105,7 +1105,12 @@ class TestPublicContract:
             assert table_markdown.autofit is True
             assert '<w:tblLayout w:type="autofit"/>' in table_xml
             assert "<w:tblGrid>" in table_xml
-            assert "<w:gridCol w:w=" not in table_xml
+            grid_columns = cast(Any, table_markdown)._tbl.tblGrid.gridCol_lst
+            assert len(grid_columns) == 2
+            assert all(
+                int(grid_column.get(qn("w:w"))) > 0
+                for grid_column in grid_columns
+            )
             assert "<w:tcW " not in table_xml
             assert 'w:val="single"' in cast(Any, table_markdown.cell(0, 0))._tc.xml
 
