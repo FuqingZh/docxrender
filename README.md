@@ -242,6 +242,27 @@ repositories should keep custom markdown dialects outside `docxrender`, either
 through caller-side preprocessing or explicit higher-level options in their own
 repo.
 
+### Table cell text
+
+Each Markdown table row occupies one physical line. Within a cell, `<br>`,
+`<br/>` and `<br />` (case insensitive) render as Word line breaks; they do not
+create additional table rows. Escape a literal pipe as `\|` and a literal
+backslash as `\\`. Leading/trailing empty cells are preserved.
+
+Table cells decode HTML character references after parsing. Use `&lt;br&gt;`
+to display the literal text `<br>` and `&amp;` for a literal ampersand. This is
+table text handling, not a general HTML renderer. Other HTML tags remain text.
+
+Callers serializing plain tabular data should HTML-escape `&`, `<` and `>`,
+escape backslashes and pipes, then normalize CRLF/CR to LF and encode LF as
+`<br>`. Apply the same encoding to column names. Keep original data unchanged.
+
+```text
+| Source | Description |
+| --- | --- |
+| Reference | Host sequence<br>Additional A\|B sequence |
+```
+
 `DocxBodyRenderPolicy` controls structural rendering choices such as heading
 numbering, Word-style versus plain-text lists, and striped table body rows. It
 does not classify product-specific paragraphs.

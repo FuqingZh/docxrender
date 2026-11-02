@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from html import unescape
 
 from docxrender.contracts import DocxMarkdownOptions
 
@@ -80,6 +81,7 @@ RE_TABLE_DELIMITER = re.compile(r"^:?-{3,}:?$")
 RE_INLINE_BOLD = re.compile(r"\*\*(.+?)\*\*")
 RE_INLINE_CODE = re.compile(r"`([^`]+)`")
 RE_INLINE_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+RE_TABLE_LINE_BREAK = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
 
 def parse_markdown_blocks(
@@ -191,8 +193,10 @@ def parse_markdown_blocks(
             line_text, has_hard_break = _strip_hard_break(line_current)
             paragraph_parts.append((line_text.strip(), has_hard_break))
             idx += 1
-            if idx < len(lines) and lines[idx].strip() and not _is_special_line(
-                lines[idx].strip()
+            if (
+                idx < len(lines)
+                and lines[idx].strip()
+                and not _is_special_line(lines[idx].strip())
             ):
                 continue
             break
@@ -275,10 +279,9 @@ def _parse_table_rows(
     rows: list[tuple[MarkdownText, ...]] = []
     idx_current = idx
     while idx_current < len(lines) and lines[idx_current].strip().startswith("|"):
-        row_text = lines[idx_current].strip().strip("|")
         row = tuple(
-            parse_markdown_text(cell.strip(), options=options)
-            for cell in row_text.split("|")
+            _parse_table_cell(cell.strip(), options=options)
+            for cell in _split_table_cells(lines[idx_current])
         )
         if not (idx_current == idx + 1 and _is_table_delimiter_row(lines[idx_current])):
             rows.append(row)
@@ -287,8 +290,46 @@ def _parse_table_rows(
 
 
 def _is_table_delimiter_row(line: str) -> bool:
-    row = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    row = [cell.strip() for cell in _split_table_cells(line)]
     return bool(row) and all(RE_TABLE_DELIMITER.match(cell) for cell in row)
+
+
+def _split_table_cells(line: str) -> tuple[str, ...]:
+    text = line.strip().removeprefix("|")
+    cells: list[str] = []
+    current: list[str] = []
+    idx = 0
+    trailing_separator = False
+    while idx < len(text):
+        char = text[idx]
+        trailing_separator = False
+        if char == "\\" and idx + 1 < len(text) and text[idx + 1] in "\\|":
+            current.append(text[idx + 1])
+            idx += 2
+            continue
+        if char == "|":
+            cells.append("".join(current))
+            current = []
+            trailing_separator = True
+        else:
+            current.append(char)
+        idx += 1
+    if not trailing_separator:
+        cells.append("".join(current))
+    return tuple(cells)
+
+
+def _parse_table_cell(text: str, *, options: DocxMarkdownOptions) -> MarkdownText:
+    # Decode entities after structural/inline parsing so encoded markup remains
+    # literal text, e.g. &lt;br&gt; must not turn into an actual line break.
+    segments = parse_markdown_text(text, options=options)
+    return tuple(
+        MarkdownTextSegment(
+            unescape(RE_TABLE_LINE_BREAK.sub("\n", segment.text)),
+            is_bold=segment.is_bold,
+        )
+        for segment in segments
+    )
 
 
 def _clean_inline_text(text: str, *, options: DocxMarkdownOptions) -> str:
