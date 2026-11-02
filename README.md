@@ -254,8 +254,11 @@ to display the literal text `<br>` and `&amp;` for a literal ampersand. This is
 table text handling, not a general HTML renderer. Other HTML tags remain text.
 
 Callers serializing plain tabular data should HTML-escape `&`, `<` and `>`,
-escape backslashes and pipes, then normalize CRLF/CR to LF and encode LF as
-`<br>`. Apply the same encoding to column names. Keep original data unchanged.
+encode inline Markdown characters `*`, backtick, `[` and `]` as `&#42;`,
+`&#96;`, `&#91;` and `&#93;`, escape backslashes and pipes, then normalize
+CRLF/CR to LF and encode LF as `<br>`. Apply the same encoding to column names.
+This preserves literal `**text**`, backtick-delimited text and `[text](target)`
+under the default inline-parsing options. Keep original data unchanged.
 
 ```text
 | Source | Description |

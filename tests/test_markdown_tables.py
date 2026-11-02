@@ -23,6 +23,9 @@ from docxrender.markdown import MarkdownTable, parse_markdown_blocks
         ("&lt;br&gt; &amp; &#124; &amp;lt;br&amp;gt;", "<br> & | &lt;br&gt;"),
         ("**first<br>second**", "first\nsecond"),
         (r"literal\n", r"literal\n"),
+        ("&#42;&#42;literal&#42;&#42;", "**literal**"),
+        ("&#96;code&#96;", "`code`"),
+        ("&#91;sample&#93;(reference)", "[sample](reference)"),
     ],
 )
 def test_cell_text_survives_public_docx_render(
