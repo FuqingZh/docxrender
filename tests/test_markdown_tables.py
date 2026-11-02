@@ -1,4 +1,6 @@
 from pathlib import Path
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 import pytest
 from docx import Document
@@ -42,7 +44,9 @@ def test_cell_text_survives_public_docx_render(
     table = result.tables[0]
     assert len(table.rows) == 2 and len(table.columns) == 2
     assert table.cell(1, 1).text == expected
-    assert len(list(table.cell(1, 1)._tc.iter(qn("w:br")))) == expected.count("\n")
+    with ZipFile(output) as archive:
+        xml = ElementTree.fromstring(archive.read("word/document.xml"))
+    assert len(list(xml.iter(qn("w:br")))) == expected.count("\n")
     assert not [p.text for p in result.paragraphs if p.text]
     if cell.startswith("**"):
         assert all(
